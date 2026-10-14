@@ -1,4 +1,11 @@
 const nextConfig = {
+  async rewrites() {
+    return {
+      beforeFiles: [{ source: '/', destination: '/index.html' }],
+      afterFiles: [],
+      fallback: [],
+    };
+  },
   output: 'standalone',
   images: {
     unoptimized: true,
