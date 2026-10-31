@@ -63,14 +63,21 @@ export interface ProductInfo {
   barcode?: string;
   name?: string;
   brand?: string;
+  manufacturer?: string;
   imageUrl?: string;
+  /** Страницы, откуда взят состав (при поиске в интернете). */
+  sources?: { title: string; uri: string }[];
 }
+
+/** Откуда взят текст состава. */
+export type IngredientsSource = 'openfoodfacts' | 'web' | 'photo';
 
 export interface ScanResult {
   verdict: Severity;
   issues: Issue[];
   traces: Issue[];
   ingredientsText: string;
+  ingredientsSource: IngredientsSource;
   product?: ProductInfo;
   /** Краткое резюме ИИ (если вызывался). */
   aiSummaryRu?: string;

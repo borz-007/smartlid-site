@@ -22,7 +22,7 @@ const FIELDS = [
 ].join(',');
 
 export class ProductNotFoundError extends Error {
-  constructor(public barcode: string) {
+  constructor(public barcode: string, public detail?: string) {
     super('Товар не найден в Open Food Facts');
     this.name = 'ProductNotFoundError';
   }

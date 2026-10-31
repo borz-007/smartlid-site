@@ -3,16 +3,25 @@
  *
  * Политика безопасности вердикта:
  *  - Локальный BANNED выдаётся мгновенно, ИИ не вызывается (экономия токенов).
+ *  - В остальных случаях состав всегда дополнительно проверяет Gemini (если ключ задан).
  *  - Итог = максимум(локальный, ИИ): ИИ может только ужесточить вердикт.
  *  - Если состав требовал проверки ИИ, но ИИ недоступен — минимум WARNING.
  *  - Ответы ИИ фильтруются по профилю (ИИ не может добавить категорию,
  *    которую пользователь не включал).
  */
 import { isAIConfigured } from '../constants/config';
-import type { Issue, IssueCategory, RawIngredients, ScanResult, Severity, UserProfile } from '../types';
+import type {
+  IngredientsSource,
+  Issue,
+  IssueCategory,
+  RawIngredients,
+  ScanResult,
+  Severity,
+  UserProfile,
+} from '../types';
 import { maxSeverity } from '../types';
-import { auditImageWithAI, auditTextWithAI, type AiAudit, type AiIssue } from '../services/gemini';
-import { fetchProductByBarcode } from '../services/openFoodFacts';
+import { auditImageWithAI, auditTextWithAI, findProductOnWeb, type AiAudit, type AiIssue } from '../services/gemini';
+import { fetchProductByBarcode, ProductNotFoundError } from '../services/openFoodFacts';
 import { analyzeLocal, computeVerdict, hasActiveDiet, type LocalResult } from './localFilter';
 import { normalizePlain } from './textNormalize';
 
@@ -76,6 +85,7 @@ function buildResult(
   ai: AiAudit | null,
   profile: UserProfile,
   notes: string[],
+  ingredientsSource: IngredientsSource,
 ): ScanResult {
   const aiIssues = ai ? ai.issues.filter((i) => aiIssueAllowed(i, profile)).map((i) => toIssue(i, profile)) : [];
   const issues = mergeIssues(local.issues, aiIssues.filter((i) => !i.isTrace));
@@ -97,6 +107,7 @@ function buildResult(
     issues,
     traces,
     ingredientsText: raw.text,
+    ingredientsSource,
     product: raw.product,
     aiSummaryRu: ai?.summary_ru || undefined,
     usedAI: Boolean(ai),
@@ -113,35 +124,86 @@ async function tryAI<T>(fn: () => Promise<T>, notes: string[]): Promise<T | null
   }
 }
 
-/** Аудит готового текста (штрихкод → OFF, или текст введён вручную). */
-export async function auditRawIngredients(raw: RawIngredients, profile: UserProfile): Promise<ScanResult> {
+export type StageCallback = (text: string) => void;
+
+/** Аудит готового текста (Open Food Facts, интернет или ручной ввод). */
+export async function auditRawIngredients(
+  raw: RawIngredients,
+  profile: UserProfile,
+  source: IngredientsSource = 'openfoodfacts',
+  onStage?: StageCallback,
+): Promise<ScanResult> {
   const local = analyzeLocal(raw, profile);
   const notes: string[] = [];
 
   if (local.verdict === 'BANNED') {
     notes.push('Мгновенный вердикт локального фильтра — ИИ не вызывался.');
-    return buildResult(raw, { ...local, needsAI: false }, null, profile, notes);
+    return buildResult(raw, { ...local, needsAI: false }, null, profile, notes, source);
   }
-
-  if (!local.needsAI) return buildResult(raw, local, null, profile, notes);
+  if (!raw.text.trim()) return buildResult(raw, local, null, profile, notes, source);
 
   if (!profile.aiEnabled) {
     notes.push('ИИ-аудит отключён в настройках.');
-    return buildResult(raw, local, null, profile, notes);
+    return buildResult(raw, local, null, profile, notes, source);
   }
   if (!isAIConfigured()) {
     notes.push('Ключ Gemini не настроен — использован только локальный фильтр.');
-    return buildResult(raw, local, null, profile, notes);
+    return buildResult(raw, local, null, profile, notes, source);
   }
 
+  onStage?.('Gemini проверяет состав…');
   const ai = await tryAI(() => auditTextWithAI(raw.text, profile, local.aiReasons), notes);
-  return buildResult(raw, local, ai, profile, notes);
+  return buildResult(raw, local, ai, profile, notes, source);
 }
 
-/** Путь А: штрихкод. */
-export async function auditBarcode(barcode: string, profile: UserProfile): Promise<ScanResult> {
-  const raw = await fetchProductByBarcode(barcode); // ProductNotFoundError пробрасывается в UI
-  return auditRawIngredients(raw, profile);
+/**
+ * Путь А: штрихкод.
+ * 1) Open Food Facts; 2) если товара нет или состав пуст — поиск в интернете через Gemini + Google Search;
+ * 3) найденный состав проверяется локальным фильтром и Gemini.
+ */
+export async function auditBarcode(barcode: string, profile: UserProfile, onStage?: StageCallback): Promise<ScanResult> {
+  onStage?.('Ищем товар в Open Food Facts…');
+  let offRaw: RawIngredients | null = null;
+  try {
+    offRaw = await fetchProductByBarcode(barcode);
+  } catch (e) {
+    if (!(e instanceof ProductNotFoundError)) throw e;
+  }
+  if (offRaw && offRaw.text.trim()) return auditRawIngredients(offRaw, profile, 'openfoodfacts', onStage);
+
+  if (!isAIConfigured()) {
+    if (offRaw) return auditRawIngredients(offRaw, profile, 'openfoodfacts', onStage);
+    throw new ProductNotFoundError(barcode, 'Для поиска в интернете нужен ключ Gemini.');
+  }
+
+  onStage?.('Ищем состав в интернете…');
+  let web;
+  try {
+    web = await findProductOnWeb(barcode);
+  } catch (e: any) {
+    if (offRaw) return auditRawIngredients(offRaw, profile, 'openfoodfacts', onStage);
+    throw new ProductNotFoundError(barcode, `Поиск в интернете не удался: ${e?.message ?? 'ошибка'}`);
+  }
+  if (!web.found) {
+    if (offRaw) return auditRawIngredients(offRaw, profile, 'openfoodfacts', onStage);
+    throw new ProductNotFoundError(barcode, 'В интернете состав этого товара тоже не найден.');
+  }
+
+  const raw: RawIngredients = {
+    ...(offRaw ?? {}),
+    text: web.ingredientsText,
+    product: {
+      barcode,
+      name: web.name ?? offRaw?.product?.name,
+      brand: web.brand ?? offRaw?.product?.brand,
+      manufacturer: web.manufacturer,
+      imageUrl: offRaw?.product?.imageUrl,
+      sources: web.sources,
+    },
+  };
+  const result = await auditRawIngredients(raw, profile, 'web', onStage);
+  result.notes.unshift('Состав найден в интернете — обязательно сверьте его с упаковкой.');
+  return result;
 }
 
 /** Путь Б: фото этикетки. Распознавание выполняет мультимодальная модель. */
@@ -157,5 +219,5 @@ export async function auditPhoto(imageBase64: string, profile: UserProfile): Pro
   // Распознанный текст дополнительно проходит детерминированный фильтр
   const local = analyzeLocal(raw, profile);
   notes.push('Текст распознан ИИ по фото — сверьте его с упаковкой.');
-  return buildResult(raw, local, ai, profile, notes);
+  return buildResult(raw, local, ai, profile, notes, 'photo');
 }

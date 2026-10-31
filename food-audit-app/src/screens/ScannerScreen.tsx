@@ -49,12 +49,15 @@ export function ScannerScreen({ onOpenSettings }: Props) {
       if (lockRef.current || mode !== 'barcode') return;
       lockRef.current = true;
       setBusy(true);
-      setBusyText('Ищем товар в Open Food Facts…');
       try {
-        showResult(await auditBarcode(data, profile));
+        showResult(await auditBarcode(data, profile, setBusyText));
       } catch (e: any) {
         if (e instanceof ProductNotFoundError) {
-          fail('Товар не найден', `Штрихкода ${data} нет в базе Open Food Facts.`, true);
+          fail(
+            'Товар не найден',
+            `Штрихкода ${data} нет в базе Open Food Facts.${e.detail ? `\n${e.detail}` : ''}\nСфотографируйте состав на упаковке.`,
+            true,
+          );
         } else {
           fail('Ошибка', e?.message ?? 'Не удалось проверить товар');
         }

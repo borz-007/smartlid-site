@@ -114,7 +114,8 @@ function buildRequestBody(parts: object[]) {
   };
 }
 
-async function callGemini(body: object): Promise<AiAudit> {
+/** Низкоуровневый вызов generateContent (напрямую или через прокси). */
+async function postGenerate(body: object): Promise<any> {
   let res: Response;
   if (config.aiProxyUrl) {
     res = await fetchWithTimeout(
@@ -141,18 +142,30 @@ async function callGemini(body: object): Promise<AiAudit> {
   if (json?.promptFeedback?.blockReason) {
     throw new HttpError(`Gemini заблокировал запрос: ${json.promptFeedback.blockReason}`);
   }
-  const text: string = (json?.candidates?.[0]?.content?.parts ?? [])
-    .map((p: { text?: string }) => p.text ?? '')
-    .join('');
-  return parseAiAudit(text);
+  return json;
+}
+
+function candidateText(json: any): string {
+  return (json?.candidates?.[0]?.content?.parts ?? []).map((p: { text?: string }) => p.text ?? '').join('');
+}
+
+async function callGemini(body: object): Promise<AiAudit> {
+  return parseAiAudit(candidateText(await postGenerate(body)));
+}
+
+/** Достать первый JSON-объект из текста (модель с поиском может добавить пояснения). */
+export function extractJsonObject(raw: string): string {
+  const cleaned = raw.trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '');
+  const start = cleaned.indexOf('{');
+  const end = cleaned.lastIndexOf('}');
+  return start >= 0 && end > start ? cleaned.slice(start, end + 1) : cleaned;
 }
 
 /** Разбор и валидация ответа модели. Экспортируется для тестов. */
 export function parseAiAudit(raw: string): AiAudit {
-  const cleaned = raw.trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '');
   let data: any;
   try {
-    data = JSON.parse(cleaned);
+    data = JSON.parse(extractJsonObject(raw));
   } catch {
     throw new HttpError('ИИ вернул ответ не в формате JSON');
   }
@@ -196,4 +209,60 @@ export function auditImageWithAI(imageBase64: string, profile: UserProfile, mime
     'выбери один полный вариант). Затем проведи аудит. Если текст состава не читается — ingredients_text="" , ' +
     'verdict="WARNING" и объясни в summary_ru.';
   return callGemini(buildRequestBody([{ inlineData: { mimeType, data: imageBase64 } }, { text: prompt }]));
+}
+
+// ───────────────────────── Поиск товара в интернете ─────────────────────────
+
+export interface WebProduct {
+  found: boolean;
+  name?: string;
+  brand?: string;
+  manufacturer?: string;
+  ingredientsText: string;
+  /** Страницы, на которые опирался ответ (из groundingMetadata). */
+  sources: { title: string; uri: string }[];
+}
+
+const WEB_SEARCH_PROMPT = (barcode: string) =>
+  `Найди в интернете продукт питания со штрихкодом EAN ${barcode} (магазины Бельгии, Нидерландов, Франции, Германии: ` +
+  'Albert Heijn, Delhaize, Colruyt, Jumbo, Carrefour, Lidl, Aldi, REWE, сайт производителя и т.п.).\n' +
+  'Нужно: название, бренд, производитель и ПОЛНЫЙ список ингредиентов дословно на языке страницы ' +
+  '(включая «может содержать следы…»).\n' +
+  'Правила: используй только данные со страниц, где совпадает именно этот штрихкод или точно этот товар. ' +
+  'Не придумывай состав. Если состав не найден — found=false и ingredients_text="".\n' +
+  'Ответ — только JSON без пояснений: ' +
+  '{"found": boolean, "name": string, "brand": string, "manufacturer": string, "ingredients_text": string}';
+
+/**
+ * Путь А, запасной вариант: товара нет в Open Food Facts → Gemini ищет его через
+ * встроенный инструмент Google Search. Ответ без ссылок-источников не принимается.
+ */
+export async function findProductOnWeb(barcode: string): Promise<WebProduct> {
+  const json = await postGenerate({
+    contents: [{ role: 'user', parts: [{ text: WEB_SEARCH_PROMPT(barcode) }] }],
+    tools: [{ google_search: {} }],
+    generationConfig: { temperature: 0 },
+  });
+
+  const sources: { title: string; uri: string }[] = (json?.candidates?.[0]?.groundingMetadata?.groundingChunks ?? [])
+    .map((c: any) => ({ title: String(c?.web?.title ?? ''), uri: String(c?.web?.uri ?? '') }))
+    .filter((s: { uri: string }) => s.uri);
+
+  let data: any = {};
+  try {
+    data = JSON.parse(extractJsonObject(candidateText(json)));
+  } catch {
+    return { found: false, ingredientsText: '', sources };
+  }
+  const ingredientsText = typeof data?.ingredients_text === 'string' ? data.ingredients_text.trim() : '';
+  const str = (v: unknown) => (typeof v === 'string' && v.trim() ? v.trim() : undefined);
+  return {
+    // Без реального поиска (источников) состав считаем непроверенным → не найден
+    found: Boolean(data?.found) && ingredientsText.length > 10 && sources.length > 0,
+    name: str(data?.name),
+    brand: str(data?.brand),
+    manufacturer: str(data?.manufacturer),
+    ingredientsText,
+    sources,
+  };
 }
