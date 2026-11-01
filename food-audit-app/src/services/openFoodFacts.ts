@@ -58,6 +58,32 @@ export function pickIngredientsText(p: OffProduct): string {
   return (candidates.find((t) => t && t.trim().length > 0) ?? '').trim();
 }
 
+export interface SearchResult {
+  barcode: string;
+  name: string;
+  brand?: string;
+  imageUrl?: string;
+}
+
+export async function searchProductsByName(query: string, page = 1): Promise<SearchResult[]> {
+  const url = `https://world.openfoodfacts.org/cgi/search.pl?search_terms=${encodeURIComponent(query)}&search_simple=1&action=process&json=1&page_size=20&page=${page}&fields=code,product_name,brands,image_front_small_url`;
+  const res = await fetchWithTimeout(
+    url,
+    { headers: { Accept: 'application/json', 'User-Agent': config.offUserAgent } },
+    config.requestTimeoutMs,
+  );
+  if (!res.ok) return [];
+  const json = await res.json() as { products?: Array<{ code?: string; product_name?: string; brands?: string; image_front_small_url?: string }> };
+  return (json.products ?? [])
+    .filter((p) => p.code && p.product_name)
+    .map((p) => ({
+      barcode: p.code!,
+      name: p.product_name!,
+      brand: p.brands?.split(',')[0]?.trim() || undefined,
+      imageUrl: p.image_front_small_url || undefined,
+    }));
+}
+
 export async function fetchProductByBarcode(barcode: string): Promise<RawIngredients> {
   if (!isValidBarcode(barcode)) throw new ProductNotFoundError(barcode);
 

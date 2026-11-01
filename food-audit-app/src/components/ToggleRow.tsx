@@ -1,6 +1,6 @@
 import React from 'react';
 import { StyleSheet, Switch, Text, View } from 'react-native';
-import { colors } from '../constants/theme';
+import { colors as fallback } from '../constants/theme';
 
 interface Props {
   label: string;
@@ -8,20 +8,22 @@ interface Props {
   value: boolean;
   onValueChange: (v: boolean) => void;
   disabled?: boolean;
+  colors?: { text: string; textMuted: string; border: string; primary: string };
 }
 
-export function ToggleRow({ label, hint, value, onValueChange, disabled }: Props) {
+export function ToggleRow({ label, hint, value, onValueChange, disabled, colors }: Props) {
+  const c = colors ?? fallback;
   return (
-    <View style={[styles.row, disabled && styles.disabled]}>
+    <View style={[styles.row, disabled && styles.disabled, { borderBottomColor: c.border }]}>
       <View style={styles.texts}>
-        <Text style={styles.label}>{label}</Text>
-        {hint ? <Text style={styles.hint}>{hint}</Text> : null}
+        <Text style={[styles.label, { color: c.text }]}>{label}</Text>
+        {hint ? <Text style={[styles.hint, { color: c.textMuted }]}>{hint}</Text> : null}
       </View>
       <Switch
         value={value}
         onValueChange={onValueChange}
         disabled={disabled}
-        trackColor={{ true: colors.primary, false: '#C9CED6' }}
+        trackColor={{ true: c.primary, false: '#C9CED6' }}
         accessibilityLabel={label}
       />
     </View>
@@ -35,10 +37,9 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     paddingHorizontal: 16,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: colors.border,
   },
   disabled: { opacity: 0.5 },
   texts: { flex: 1, paddingRight: 12 },
-  label: { fontSize: 16, color: colors.text, fontWeight: '500' },
-  hint: { fontSize: 13, color: colors.textMuted, marginTop: 2 },
+  label: { fontSize: 16, fontWeight: '500' },
+  hint: { fontSize: 13, marginTop: 2 },
 });

@@ -86,6 +86,36 @@ export interface ScanResult {
   notes: string[];
 }
 
+/** Запись в истории сканирований. */
+export interface HistoryEntry {
+  id: string;
+  barcode?: string;
+  productName?: string;
+  brand?: string;
+  verdict: Severity;
+  date: string;
+  imageUrl?: string;
+  ingredientsSource: IngredientsSource;
+  result: ScanResult;
+}
+
+/** Запись в избранном / чёрном списке. */
+export interface SavedProduct {
+  barcode?: string;
+  productName?: string;
+  brand?: string;
+  verdict: Severity;
+  imageUrl?: string;
+  date: string;
+}
+
+/** Именованный профиль (для мультипрофиля / семья). */
+export interface NamedProfile {
+  id: string;
+  name: string;
+  profile: UserProfile;
+}
+
 /** Сырые данные, полученные на шаге 1 (штрихкод или фото). */
 export interface RawIngredients {
   text: string;
