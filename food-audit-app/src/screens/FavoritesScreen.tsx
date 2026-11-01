@@ -4,6 +4,7 @@ import { FlatList, Image, Pressable, StyleSheet, Text, View } from 'react-native
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { severityColors } from '../constants/theme';
 import { useTheme } from '../context/ThemeContext';
+import { useI18n } from '../i18n';
 import { loadBlacklist, loadFavorites, removeFavorite, removeFromBlacklist } from '../storage/favoritesStorage';
 import type { SavedProduct } from '../types';
 
@@ -13,7 +14,7 @@ interface Props {
 
 type Tab = 'favorites' | 'blacklist';
 
-function ProductRow({ item, onRemove, colors }: { item: SavedProduct; onRemove: () => void; colors: any }) {
+function ProductRow({ item, onRemove, colors, productLabel }: { item: SavedProduct; onRemove: () => void; colors: any; productLabel: string }) {
   const c = severityColors[item.verdict];
   return (
     <View style={[styles.row, { backgroundColor: colors.card, borderBottomColor: colors.border }]}>
@@ -26,7 +27,7 @@ function ProductRow({ item, onRemove, colors }: { item: SavedProduct; onRemove: 
       )}
       <View style={styles.info}>
         <Text style={[styles.name, { color: colors.text }]} numberOfLines={1}>
-          {item.productName || item.barcode || 'Товар'}
+          {item.productName || item.barcode || productLabel}
         </Text>
         {item.brand ? <Text style={[styles.brand, { color: colors.textMuted }]}>{item.brand}</Text> : null}
       </View>
@@ -42,6 +43,7 @@ function ProductRow({ item, onRemove, colors }: { item: SavedProduct; onRemove: 
 
 export function FavoritesScreen({ onBack }: Props) {
   const { colors } = useTheme();
+  const { t } = useI18n();
   const [tab, setTab] = useState<Tab>('favorites');
   const [favs, setFavs] = useState<SavedProduct[]>([]);
   const [blist, setBlist] = useState<SavedProduct[]>([]);
@@ -63,7 +65,7 @@ export function FavoritesScreen({ onBack }: Props) {
 
   const data = tab === 'favorites' ? favs : blist;
   const emptyIcon = tab === 'favorites' ? 'heart-outline' : 'ban-outline';
-  const emptyText = tab === 'favorites' ? 'Нет избранных товаров' : 'Чёрный список пуст';
+  const emptyText = tab === 'favorites' ? t('no_favorites') : t('blacklist_empty');
 
   return (
     <SafeAreaView style={[styles.safe, { backgroundColor: colors.bg }]} edges={['top', 'bottom']}>
@@ -71,24 +73,24 @@ export function FavoritesScreen({ onBack }: Props) {
         <Pressable onPress={onBack} hitSlop={12}>
           <Ionicons name="chevron-back" size={28} color={colors.primary} />
         </Pressable>
-        <Text style={[styles.title, { color: colors.text }]}>Сохранённые</Text>
+        <Text style={[styles.title, { color: colors.text }]}>{t('saved')}</Text>
         <View style={{ width: 28 }} />
       </View>
 
       <View style={[styles.tabs, { backgroundColor: colors.card, borderColor: colors.border }]}>
-        {(['favorites', 'blacklist'] as Tab[]).map((t) => (
+        {(['favorites', 'blacklist'] as Tab[]).map((tb) => (
           <Pressable
-            key={t}
-            style={[styles.tab, tab === t && { backgroundColor: colors.primary }]}
-            onPress={() => setTab(t)}
+            key={tb}
+            style={[styles.tab, tab === tb && { backgroundColor: colors.primary }]}
+            onPress={() => setTab(tb)}
           >
             <Ionicons
-              name={t === 'favorites' ? 'heart' : 'ban'}
+              name={tb === 'favorites' ? 'heart' : 'ban'}
               size={16}
-              color={tab === t ? colors.white : colors.textMuted}
+              color={tab === tb ? colors.white : colors.textMuted}
             />
-            <Text style={[styles.tabText, { color: tab === t ? colors.white : colors.textMuted }]}>
-              {t === 'favorites' ? `Избранное (${favs.length})` : `Чёрный список (${blist.length})`}
+            <Text style={[styles.tabText, { color: tab === tb ? colors.white : colors.textMuted }]}>
+              {tb === 'favorites' ? `${t('favorites_tab')} (${favs.length})` : `${t('blacklist_tab')} (${blist.length})`}
             </Text>
           </Pressable>
         ))}
@@ -107,6 +109,7 @@ export function FavoritesScreen({ onBack }: Props) {
             <ProductRow
               item={item}
               colors={colors}
+              productLabel={t('product')}
               onRemove={() => (tab === 'favorites' ? handleRemoveFav(item) : handleRemoveBl(item))}
             />
           )}

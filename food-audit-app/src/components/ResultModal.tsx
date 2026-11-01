@@ -2,8 +2,9 @@ import { Ionicons } from '@expo/vector-icons';
 import React, { useEffect, useState } from 'react';
 import { Image, Linking, Modal, Pressable, ScrollView, Share, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { severityColors, severityLabels, specificVerdicts } from '../constants/theme';
+import { getSeverityLabels, getSpecificVerdicts, severityColors } from '../constants/theme';
 import { splitIngredients } from '../engine/ingredients';
+import { useI18n } from '../i18n';
 import { addToHistory } from '../storage/historyStorage';
 import {
   addFavorite,
@@ -16,51 +17,12 @@ import {
 import { setCachedResult } from '../storage/cacheStorage';
 import type { IngredientsSource, Issue, IssueCategory, ScanResult, SavedProduct } from '../types';
 
-const INGREDIENTS_SOURCE_LABELS: Record<IngredientsSource, string> = {
-  openfoodfacts: 'из базы Open Food Facts',
-  web: 'найден в интернете',
-  photo: 'распознан по фото',
-};
-
 interface Props {
   result: ScanResult | null;
   onClose: () => void;
 }
 
-const CATEGORY_LABELS: Record<IssueCategory, string> = {
-  halal: 'Halal',
-  vegan: 'Vegan',
-  vegetarian: 'Vegetarian',
-  allergen: 'Аллерген',
-  custom: 'Стоп-слово',
-  other: 'Прочее',
-};
-
-const SOURCE_LABELS: Record<Issue['source'], string> = {
-  local: 'локальный фильтр',
-  ai: 'ИИ',
-  openfoodfacts: 'Open Food Facts',
-};
-
-function getSpecificTitle(result: ScanResult): string | null {
-  if (result.verdict !== 'BANNED') return null;
-  const cats = result.issues.filter((i) => i.severity === 'BANNED').flatMap((i) => i.categories);
-  for (const key of ['halal', 'vegan', 'vegetarian', 'allergen', 'custom'] as const) {
-    if (cats.includes(key) && specificVerdicts[key]) return specificVerdicts[key].title;
-  }
-  return null;
-}
-
-function getSpecificSubtitle(result: ScanResult): string | null {
-  if (result.verdict !== 'BANNED') return null;
-  const cats = result.issues.filter((i) => i.severity === 'BANNED').flatMap((i) => i.categories);
-  for (const key of ['halal', 'vegan', 'vegetarian', 'allergen', 'custom'] as const) {
-    if (cats.includes(key) && specificVerdicts[key]) return specificVerdicts[key].subtitle;
-  }
-  return null;
-}
-
-function IssueCard({ issue }: { issue: Issue }) {
+function IssueCard({ issue, categoryLabels, sourceLabels }: { issue: Issue; categoryLabels: Record<IssueCategory, string>; sourceLabels: Record<Issue['source'], string> }) {
   const c = severityColors[issue.severity];
   return (
     <View style={[styles.issue, { borderLeftColor: c.bg, backgroundColor: c.soft }]}>
@@ -69,9 +31,9 @@ function IssueCard({ issue }: { issue: Issue }) {
       {issue.reasonRu ? <Text style={styles.issueReason}>{issue.reasonRu}</Text> : null}
       <View style={styles.tags}>
         {issue.categories.map((cat) => (
-          <Text key={cat} style={styles.tag}>{CATEGORY_LABELS[cat]}</Text>
+          <Text key={cat} style={styles.tag}>{categoryLabels[cat]}</Text>
         ))}
-        <Text style={styles.source}>{SOURCE_LABELS[issue.source]}</Text>
+        <Text style={styles.source}>{sourceLabels[issue.source]}</Text>
       </View>
     </View>
   );
@@ -89,8 +51,33 @@ function toSavedProduct(result: ScanResult): SavedProduct {
 }
 
 export function ResultModal({ result, onClose }: Props) {
+  const { t } = useI18n();
   const [fav, setFav] = useState(false);
   const [bl, setBl] = useState(false);
+
+  const severityLabelsI18n = getSeverityLabels(t);
+  const specificVerdictsI18n = getSpecificVerdicts(t);
+
+  const ingredientsSourceLabels: Record<IngredientsSource, string> = {
+    openfoodfacts: t('source_off'),
+    web: t('source_web'),
+    photo: t('source_photo'),
+  };
+
+  const categoryLabels: Record<IssueCategory, string> = {
+    halal: t('cat_halal'),
+    vegan: t('cat_vegan'),
+    vegetarian: t('cat_vegetarian'),
+    allergen: t('cat_allergen'),
+    custom: t('cat_stopword'),
+    other: t('cat_other'),
+  };
+
+  const sourceLabels: Record<Issue['source'], string> = {
+    local: t('source_local'),
+    ai: t('source_ai'),
+    openfoodfacts: t('source_openfoodfacts'),
+  };
 
   useEffect(() => {
     if (!result) return;
@@ -107,15 +94,34 @@ export function ResultModal({ result, onClose }: Props) {
   if (!result) return null;
 
   const c = severityColors[result.verdict];
-  const label = severityLabels[result.verdict];
-  const specTitle = getSpecificTitle(result);
-  const specSubtitle = getSpecificSubtitle(result);
+  const label = severityLabelsI18n[result.verdict];
+
+  const getSpecificTitle = (): string | null => {
+    if (result.verdict !== 'BANNED') return null;
+    const cats = result.issues.filter((i) => i.severity === 'BANNED').flatMap((i) => i.categories);
+    for (const key of ['halal', 'vegan', 'vegetarian', 'allergen', 'custom'] as const) {
+      if (cats.includes(key) && specificVerdictsI18n[key]) return specificVerdictsI18n[key].title;
+    }
+    return null;
+  };
+
+  const getSpecificSubtitle = (): string | null => {
+    if (result.verdict !== 'BANNED') return null;
+    const cats = result.issues.filter((i) => i.severity === 'BANNED').flatMap((i) => i.categories);
+    for (const key of ['halal', 'vegan', 'vegetarian', 'allergen', 'custom'] as const) {
+      if (cats.includes(key) && specificVerdictsI18n[key]) return specificVerdictsI18n[key].subtitle;
+    }
+    return null;
+  };
+
+  const specTitle = getSpecificTitle();
+  const specSubtitle = getSpecificSubtitle();
   const { product } = result;
 
   const handleShare = async () => {
-    const name = product?.name || 'Товар';
+    const name = product?.name || t('product');
     const issues = result.issues.map((i) => `- ${i.translationRu}`).join('\n');
-    const text = `${name}\nВердикт: ${specTitle || label.title}\n${issues ? `\nПроблемы:\n${issues}` : 'Проблем не найдено.'}\n\nПроверено через Food Audit`;
+    const text = `${name}\n${t('verdict_text')}: ${specTitle || label.title}\n${issues ? `\n${t('issues_found')}:\n${issues}` : t('no_issues_short')}\n\n${t('checked_by')}`;
     try {
       await Share.share({ message: text });
     } catch {}
@@ -150,10 +156,10 @@ export function ResultModal({ result, onClose }: Props) {
           {product && (product.name || product.brand) ? (
             <View style={styles.product}>
               <View style={{ flex: 1 }}>
-                <Text style={styles.productName}>{product.name ?? 'Без названия'}</Text>
+                <Text style={styles.productName}>{product.name ?? t('no_name')}</Text>
                 {product.brand ? <Text style={styles.muted}>{product.brand}</Text> : null}
                 {product.manufacturer && product.manufacturer !== product.brand ? (
-                  <Text style={styles.muted}>Производитель: {product.manufacturer}</Text>
+                  <Text style={styles.muted}>{t('manufacturer')}: {product.manufacturer}</Text>
                 ) : null}
                 {product.barcode ? <Text style={styles.muted}>{product.barcode}</Text> : null}
               </View>
@@ -163,15 +169,15 @@ export function ResultModal({ result, onClose }: Props) {
           <View style={styles.actions}>
             <Pressable style={styles.actionBtn} onPress={handleShare}>
               <Ionicons name="share-outline" size={20} color="#1F6FEB" />
-              <Text style={styles.actionLabel}>Поделиться</Text>
+              <Text style={styles.actionLabel}>{t('share')}</Text>
             </Pressable>
             <Pressable style={styles.actionBtn} onPress={toggleFav}>
               <Ionicons name={fav ? 'heart' : 'heart-outline'} size={20} color={fav ? '#D92D20' : '#1F6FEB'} />
-              <Text style={styles.actionLabel}>{fav ? 'В избранном' : 'В избранное'}</Text>
+              <Text style={styles.actionLabel}>{fav ? t('in_favorites') : t('add_favorite')}</Text>
             </Pressable>
             <Pressable style={styles.actionBtn} onPress={toggleBl}>
               <Ionicons name={bl ? 'ban' : 'ban-outline'} size={20} color={bl ? '#D92D20' : '#1F6FEB'} />
-              <Text style={styles.actionLabel}>{bl ? 'В чёрном списке' : 'В чёрный список'}</Text>
+              <Text style={styles.actionLabel}>{bl ? t('in_blacklist') : t('add_blacklist')}</Text>
             </Pressable>
           </View>
 
@@ -182,35 +188,35 @@ export function ResultModal({ result, onClose }: Props) {
             </View>
           ) : null}
 
-          <Text style={styles.h2}>Найденные проблемы</Text>
+          <Text style={styles.h2}>{t('issues_found')}</Text>
           {result.issues.length === 0 ? (
-            <Text style={styles.muted}>Запрещённых или сомнительных компонентов не найдено.</Text>
+            <Text style={styles.muted}>{t('no_issues')}</Text>
           ) : (
-            result.issues.map((i) => <IssueCard key={i.key} issue={i} />)
+            result.issues.map((i) => <IssueCard key={i.key} issue={i} categoryLabels={categoryLabels} sourceLabels={sourceLabels} />)
           )}
 
           {result.traces.length > 0 ? (
             <>
-              <Text style={styles.h2}>Следы аллергенов</Text>
-              {result.traces.map((i) => <IssueCard key={i.key} issue={i} />)}
+              <Text style={styles.h2}>{t('allergen_traces')}</Text>
+              {result.traces.map((i) => <IssueCard key={i.key} issue={i} categoryLabels={categoryLabels} sourceLabels={sourceLabels} />)}
             </>
           ) : null}
 
           {result.notes.length > 0 ? (
             <View style={styles.notes}>
               {result.notes.map((n) => (
-                <Text key={n} style={styles.note}>ⓘ {n}</Text>
+                <Text key={n} style={styles.note}>{n}</Text>
               ))}
             </View>
           ) : null}
 
           {result.ingredientsText ? (
             <>
-              <Text style={styles.h2}>Состав</Text>
-              <Text style={styles.muted}>{INGREDIENTS_SOURCE_LABELS[result.ingredientsSource]}</Text>
+              <Text style={styles.h2}>{t('ingredients')}</Text>
+              <Text style={styles.muted}>{ingredientsSourceLabels[result.ingredientsSource]}</Text>
               <View style={styles.ingredientsBox}>
                 {splitIngredients(result.ingredientsText).map((ing, idx) => (
-                  <Text key={`${idx}-${ing}`} style={styles.ingredient}>• {ing}</Text>
+                  <Text key={`${idx}-${ing}`} style={styles.ingredient}>{ing}</Text>
                 ))}
               </View>
             </>
@@ -218,7 +224,7 @@ export function ResultModal({ result, onClose }: Props) {
 
           {product?.sources?.length ? (
             <>
-              <Text style={styles.h2}>Источники</Text>
+              <Text style={styles.h2}>{t('sources')}</Text>
               {product.sources.slice(0, 5).map((src) => (
                 <Pressable key={src.uri} onPress={() => Linking.openURL(src.uri)}>
                   <Text style={styles.link} numberOfLines={1}>{src.title || src.uri}</Text>
@@ -230,7 +236,7 @@ export function ResultModal({ result, onClose }: Props) {
 
         <Pressable style={styles.nextBtn} onPress={onClose} accessibilityRole="button">
           <Ionicons name="scan-outline" size={20} color="#FFFFFF" />
-          <Text style={styles.nextText}>Сканировать следующий товар</Text>
+          <Text style={styles.nextText}>{t('scan_next')}</Text>
         </Pressable>
       </SafeAreaView>
     </Modal>

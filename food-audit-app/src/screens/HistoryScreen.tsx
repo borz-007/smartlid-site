@@ -5,6 +5,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { ResultModal } from '../components/ResultModal';
 import { severityColors } from '../constants/theme';
 import { useTheme } from '../context/ThemeContext';
+import { useI18n } from '../i18n';
 import { clearHistory, loadHistory } from '../storage/historyStorage';
 import type { HistoryEntry, ScanResult } from '../types';
 
@@ -12,7 +13,7 @@ interface Props {
   onBack: () => void;
 }
 
-function EntryRow({ entry, onPress, colors }: { entry: HistoryEntry; onPress: () => void; colors: any }) {
+function EntryRow({ entry, onPress, colors, unknownLabel }: { entry: HistoryEntry; onPress: () => void; colors: any; unknownLabel: string }) {
   const c = severityColors[entry.verdict];
   const date = new Date(entry.date);
   const dateStr = `${date.getDate().toString().padStart(2, '0')}.${(date.getMonth() + 1).toString().padStart(2, '0')} ${date.getHours().toString().padStart(2, '0')}:${date.getMinutes().toString().padStart(2, '0')}`;
@@ -27,7 +28,7 @@ function EntryRow({ entry, onPress, colors }: { entry: HistoryEntry; onPress: ()
       )}
       <View style={styles.info}>
         <Text style={[styles.name, { color: colors.text }]} numberOfLines={1}>
-          {entry.productName || entry.barcode || 'Неизвестный товар'}
+          {entry.productName || entry.barcode || unknownLabel}
         </Text>
         {entry.brand ? <Text style={[styles.brand, { color: colors.textMuted }]} numberOfLines={1}>{entry.brand}</Text> : null}
         <Text style={[styles.date, { color: colors.textMuted }]}>{dateStr}</Text>
@@ -41,6 +42,7 @@ function EntryRow({ entry, onPress, colors }: { entry: HistoryEntry; onPress: ()
 
 export function HistoryScreen({ onBack }: Props) {
   const { colors } = useTheme();
+  const { t } = useI18n();
   const [entries, setEntries] = useState<HistoryEntry[]>([]);
   const [selected, setSelected] = useState<ScanResult | null>(null);
   const [resultId, setResultId] = useState(0);
@@ -50,10 +52,10 @@ export function HistoryScreen({ onBack }: Props) {
   }, []);
 
   const handleClear = useCallback(() => {
-    Alert.alert('Очистить историю?', 'Все записи будут удалены', [
-      { text: 'Отмена', style: 'cancel' },
+    Alert.alert(t('clear_history'), t('all_entries_deleted'), [
+      { text: t('cancel'), style: 'cancel' },
       {
-        text: 'Удалить',
+        text: t('delete'),
         style: 'destructive',
         onPress: async () => {
           await clearHistory();
@@ -61,7 +63,7 @@ export function HistoryScreen({ onBack }: Props) {
         },
       },
     ]);
-  }, []);
+  }, [t]);
 
   const openResult = (entry: HistoryEntry) => {
     setSelected(entry.result);
@@ -74,7 +76,7 @@ export function HistoryScreen({ onBack }: Props) {
         <Pressable onPress={onBack} hitSlop={12}>
           <Ionicons name="chevron-back" size={28} color={colors.primary} />
         </Pressable>
-        <Text style={[styles.title, { color: colors.text }]}>История</Text>
+        <Text style={[styles.title, { color: colors.text }]}>{t('history_title')}</Text>
         {entries.length > 0 ? (
           <Pressable onPress={handleClear} hitSlop={12}>
             <Ionicons name="trash-outline" size={22} color={colors.textMuted} />
@@ -87,13 +89,13 @@ export function HistoryScreen({ onBack }: Props) {
       {entries.length === 0 ? (
         <View style={styles.empty}>
           <Ionicons name="time-outline" size={48} color={colors.textMuted} />
-          <Text style={[styles.emptyText, { color: colors.textMuted }]}>Пока нет сканирований</Text>
+          <Text style={[styles.emptyText, { color: colors.textMuted }]}>{t('no_scans_yet')}</Text>
         </View>
       ) : (
         <FlatList
           data={entries}
           keyExtractor={(e) => e.id}
-          renderItem={({ item }) => <EntryRow entry={item} onPress={() => openResult(item)} colors={colors} />}
+          renderItem={({ item }) => <EntryRow entry={item} onPress={() => openResult(item)} colors={colors} unknownLabel={t('unknown_product')} />}
         />
       )}
 

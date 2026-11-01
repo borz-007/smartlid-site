@@ -7,6 +7,7 @@ import { ResultModal } from '../components/ResultModal';
 import { colors } from '../constants/theme';
 import { useProfile } from '../context/ProfileContext';
 import { auditBarcode, auditPhoto } from '../engine/auditor';
+import { useI18n } from '../i18n';
 import { ProductNotFoundError } from '../services/openFoodFacts';
 import type { ScanResult } from '../types';
 
@@ -22,6 +23,7 @@ const BARCODE_TYPES = ['ean13', 'ean8', 'upc_a', 'upc_e'] as const;
 
 export function ScannerScreen({ initialMode = 'barcode', onOpenSettings, onBack }: Props) {
   const { profile } = useProfile();
+  const { t } = useI18n();
   const [permission, requestPermission] = useCameraPermissions();
   const cameraRef = useRef<CameraView>(null);
   const [mode, setMode] = useState<Mode>(initialMode);
@@ -30,7 +32,6 @@ export function ScannerScreen({ initialMode = 'barcode', onOpenSettings, onBack 
   const [busyText, setBusyText] = useState('');
   const [result, setResult] = useState<ScanResult | null>(null);
   const [resultId, setResultId] = useState(0);
-  /** Блокировка от повторных срабатываний onBarcodeScanned (он вызывается много раз в секунду). */
   const lockRef = useRef(false);
 
   const showResult = (r: ScanResult) => {
@@ -40,8 +41,8 @@ export function ScannerScreen({ initialMode = 'barcode', onOpenSettings, onBack 
 
   const fail = (title: string, message: string, offerPhoto = false) => {
     Alert.alert(title, message, [
-      ...(offerPhoto ? [{ text: 'Сфотографировать состав', onPress: () => setMode('photo') }] : []),
-      { text: 'OK', onPress: () => (lockRef.current = false) },
+      ...(offerPhoto ? [{ text: t('photo_ingredients'), onPress: () => setMode('photo') }] : []),
+      { text: t('ok'), onPress: () => (lockRef.current = false) },
     ]);
     if (offerPhoto) lockRef.current = false;
   };
@@ -56,30 +57,30 @@ export function ScannerScreen({ initialMode = 'barcode', onOpenSettings, onBack 
       } catch (e: any) {
         if (e instanceof ProductNotFoundError) {
           fail(
-            'Товар не найден',
-            `Штрихкода ${data} нет в базе Open Food Facts.${e.detail ? `\n${e.detail}` : ''}\nСфотографируйте состав на упаковке.`,
+            t('product_not_found'),
+            t('product_not_found_msg', { barcode: data }) + (e.detail ? `\n${e.detail}` : ''),
             true,
           );
         } else {
-          fail('Ошибка', e?.message ?? 'Не удалось проверить товар');
+          fail(t('error'), e?.message ?? t('error_check'));
         }
       } finally {
         setBusy(false);
       }
     },
-    [mode, profile],
+    [mode, profile, t],
   );
 
   const handleCapture = async () => {
     if (busy || !cameraRef.current) return;
     setBusy(true);
-    setBusyText('Распознаём и проверяем состав…');
+    setBusyText(t('recognizing'));
     try {
       const photo = await cameraRef.current.takePictureAsync({ base64: true, quality: 0.6, skipProcessing: false });
-      if (!photo?.base64) throw new Error('Не удалось получить снимок');
+      if (!photo?.base64) throw new Error(t('no_photo'));
       showResult(await auditPhoto(photo.base64, profile));
     } catch (e: any) {
-      fail('Ошибка распознавания', e?.message ?? 'Попробуйте ещё раз при хорошем освещении');
+      fail(t('photo_error'), e?.message ?? t('photo_error_hint'));
     } finally {
       setBusy(false);
     }
@@ -98,12 +99,12 @@ export function ScannerScreen({ initialMode = 'barcode', onOpenSettings, onBack 
     return (
       <SafeAreaView style={styles.center}>
         <Ionicons name="camera-outline" size={56} color={colors.textMuted} />
-        <Text style={styles.permText}>Нужен доступ к камере для сканирования штрихкодов и этикеток.</Text>
+        <Text style={styles.permText}>{t('camera_needed')}</Text>
         <Pressable style={styles.permBtn} onPress={requestPermission}>
-          <Text style={styles.permBtnText}>Разрешить доступ</Text>
+          <Text style={styles.permBtnText}>{t('allow_camera')}</Text>
         </Pressable>
         <Pressable onPress={onOpenSettings} style={{ marginTop: 16 }}>
-          <Text style={{ color: colors.primary }}>Открыть настройки профиля</Text>
+          <Text style={{ color: colors.primary }}>{t('open_profile')}</Text>
         </Pressable>
       </SafeAreaView>
     );
@@ -122,36 +123,33 @@ export function ScannerScreen({ initialMode = 'barcode', onOpenSettings, onBack 
         onBarcodeScanned={scanningActive ? handleBarcode : undefined}
       />
 
-      {/* Затемнение и прицельная рамка */}
       <View style={styles.overlay} pointerEvents="none">
         <View style={[styles.frame, mode === 'barcode' ? styles.frameBarcode : styles.framePhoto]} />
         <Text style={styles.hint}>
-          {mode === 'barcode'
-            ? 'Наведите камеру на штрихкод'
-            : 'Поместите блок состава (Ingrediënten / Ingrédients / Zutaten) в рамку'}
+          {mode === 'barcode' ? t('aim_barcode') : t('aim_photo')}
         </Text>
       </View>
 
       <SafeAreaView style={styles.ui} edges={['top', 'bottom']} pointerEvents="box-none">
         <View style={styles.topBar}>
           {onBack ? (
-            <Pressable style={styles.roundBtn} onPress={onBack} accessibilityLabel="Назад">
+            <Pressable style={styles.roundBtn} onPress={onBack} accessibilityLabel={t('history')}>
               <Ionicons name="chevron-back" size={26} color={colors.white} />
             </Pressable>
           ) : (
             <View style={{ width: 48 }} />
           )}
-          <Pressable style={styles.roundBtn} onPress={() => setTorch((t) => !t)} accessibilityLabel="Фонарик">
+          <Pressable style={styles.roundBtn} onPress={() => setTorch((v) => !v)}>
             <Ionicons name={torch ? 'flashlight' : 'flashlight-outline'} size={24} color={colors.white} />
           </Pressable>
-          <Pressable style={styles.roundBtn} onPress={onOpenSettings} accessibilityLabel="Настройки">
+          <Pressable style={styles.roundBtn} onPress={onOpenSettings} accessibilityLabel={t('profile')}>
             <Ionicons name="settings-outline" size={24} color={colors.white} />
           </Pressable>
         </View>
 
         <View style={styles.bottom}>
           {mode === 'photo' ? (
-            <Pressable style={styles.shutter} onPress={handleCapture} disabled={busy} accessibilityLabel="Сделать снимок">
+            <Pressable style={styles.shutter} onPress={handleCapture} disabled={busy}>
               <View style={styles.shutterInner} />
             </Pressable>
           ) : null}
@@ -169,7 +167,7 @@ export function ScannerScreen({ initialMode = 'barcode', onOpenSettings, onBack 
                   color={mode === m ? colors.text : colors.white}
                 />
                 <Text style={[styles.segmentText, mode === m && styles.segmentTextActive]}>
-                  {m === 'barcode' ? 'Штрихкод' : 'Фото состава'}
+                  {m === 'barcode' ? t('barcode_tab') : t('photo_tab')}
                 </Text>
               </Pressable>
             ))}
@@ -200,7 +198,6 @@ const styles = StyleSheet.create({
     borderWidth: 3,
     borderColor: colors.white,
     borderRadius: 16,
-    // «Затемнение» вокруг рамки одним большим полупрозрачным бордером-тенью
     shadowColor: '#000',
     shadowOpacity: 0.6,
     shadowRadius: 0,

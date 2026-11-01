@@ -18,6 +18,7 @@ import { ResultModal } from '../components/ResultModal';
 import { useProfile } from '../context/ProfileContext';
 import { useTheme } from '../context/ThemeContext';
 import { auditBarcode } from '../engine/auditor';
+import { useI18n } from '../i18n';
 import { getCachedResult } from '../storage/cacheStorage';
 import { isValidBarcode, searchProductsByName, type SearchResult } from '../services/openFoodFacts';
 import type { ScanResult } from '../types';
@@ -41,6 +42,7 @@ export function HomeScreen({
 }: Props) {
   const { colors } = useTheme();
   const { profile } = useProfile();
+  const { t } = useI18n();
   const [query, setQuery] = useState('');
   const [searching, setSearching] = useState(false);
   const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
@@ -72,7 +74,7 @@ export function HomeScreen({
   const handleManualBarcode = useCallback(async () => {
     const code = query.trim();
     if (!isValidBarcode(code)) {
-      Alert.alert('Неверный штрихкод', 'Введите 8–14 цифр штрихкода');
+      Alert.alert(t('invalid_barcode'), t('invalid_barcode_msg'));
       return;
     }
     setBusy(true);
@@ -88,11 +90,11 @@ export function HomeScreen({
       setResult(r);
       setResultId((n) => n + 1);
     } catch (e: any) {
-      Alert.alert('Ошибка', e?.message ?? 'Не удалось проверить товар');
+      Alert.alert(t('error'), e?.message ?? t('error_check'));
     } finally {
       setBusy(false);
     }
-  }, [query, profile]);
+  }, [query, profile, t]);
 
   const handleSelectProduct = useCallback(async (item: SearchResult) => {
     setShowSearch(false);
@@ -109,21 +111,21 @@ export function HomeScreen({
       setResult(r);
       setResultId((n) => n + 1);
     } catch (e: any) {
-      Alert.alert('Ошибка', e?.message ?? 'Не удалось проверить товар');
+      Alert.alert(t('error'), e?.message ?? t('error_check'));
     } finally {
       setBusy(false);
     }
-  }, [profile]);
+  }, [profile, t]);
 
   return (
     <SafeAreaView style={[styles.safe, { backgroundColor: colors.bg }]} edges={['top', 'bottom']}>
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         <View style={styles.header}>
-          <Pressable onPress={onOpenHistory} hitSlop={12} accessibilityLabel="История">
+          <Pressable onPress={onOpenHistory} hitSlop={12} accessibilityLabel={t('history')}>
             <Ionicons name="time-outline" size={26} color={colors.text} />
           </Pressable>
           <Text style={[styles.title, { color: colors.text }]}>Food Audit</Text>
-          <Pressable onPress={onOpenSettings} hitSlop={12} accessibilityLabel="Настройки">
+          <Pressable onPress={onOpenSettings} hitSlop={12} accessibilityLabel={t('profile')}>
             <Ionicons name="settings-outline" size={26} color={colors.text} />
           </Pressable>
         </View>
@@ -141,7 +143,7 @@ export function HomeScreen({
             style={[styles.searchInput, { color: colors.text }]}
             value={query}
             onChangeText={doSearch}
-            placeholder="Штрихкод или название продукта"
+            placeholder={t('search_placeholder')}
             placeholderTextColor={colors.textMuted}
             returnKeyType="search"
             onSubmitEditing={handleManualBarcode}
@@ -187,41 +189,41 @@ export function HomeScreen({
           <View style={[styles.logoCircle, { backgroundColor: colors.primary }]}>
             <Ionicons name="shield-checkmark" size={64} color={colors.white} />
           </View>
-          <Text style={[styles.subtitle, { color: colors.text }]}>Проверка состава продуктов</Text>
-          <Text style={[styles.hint, { color: colors.textMuted }]}>Halal · Vegan · Аллергены · Стоп-слова</Text>
+          <Text style={[styles.subtitle, { color: colors.text }]}>{t('check_ingredients')}</Text>
+          <Text style={[styles.hint, { color: colors.textMuted }]}>{t('halal_vegan_allergens')}</Text>
 
           <View style={styles.buttons}>
             <Pressable style={[styles.bigBtn, { backgroundColor: colors.card }]} onPress={onScanBarcode}>
               <View style={[styles.iconCircle, { backgroundColor: colors.bg }]}>
                 <Ionicons name="barcode-outline" size={36} color={colors.primary} />
               </View>
-              <Text style={[styles.btnTitle, { color: colors.text }]}>Сканировать код</Text>
-              <Text style={[styles.btnDesc, { color: colors.textMuted }]}>Наведите камеру на штрихкод товара</Text>
+              <Text style={[styles.btnTitle, { color: colors.text }]}>{t('scan_barcode')}</Text>
+              <Text style={[styles.btnDesc, { color: colors.textMuted }]}>{t('scan_barcode_hint')}</Text>
             </Pressable>
 
             <Pressable style={[styles.bigBtn, { backgroundColor: colors.card }]} onPress={onScanPhoto}>
               <View style={[styles.iconCircle, { backgroundColor: colors.bg }]}>
                 <Ionicons name="document-text-outline" size={36} color="#12B76A" />
               </View>
-              <Text style={[styles.btnTitle, { color: colors.text }]}>Сканировать состав</Text>
-              <Text style={[styles.btnDesc, { color: colors.textMuted }]}>Сфотографируйте блок ингредиентов</Text>
+              <Text style={[styles.btnTitle, { color: colors.text }]}>{t('scan_photo')}</Text>
+              <Text style={[styles.btnDesc, { color: colors.textMuted }]}>{t('scan_photo_hint')}</Text>
             </Pressable>
           </View>
 
           <View style={styles.quickLinks}>
             <Pressable style={[styles.quickBtn, { backgroundColor: colors.card }]} onPress={onOpenHistory}>
               <Ionicons name="time-outline" size={20} color={colors.primary} />
-              <Text style={[styles.quickText, { color: colors.text }]}>История</Text>
+              <Text style={[styles.quickText, { color: colors.text }]}>{t('history')}</Text>
             </Pressable>
             <Pressable style={[styles.quickBtn, { backgroundColor: colors.card }]} onPress={onOpenFavorites}>
               <Ionicons name="heart-outline" size={20} color="#D92D20" />
-              <Text style={[styles.quickText, { color: colors.text }]}>Избранное</Text>
+              <Text style={[styles.quickText, { color: colors.text }]}>{t('favorites')}</Text>
             </Pressable>
           </View>
         </View>
 
         <Text style={[styles.footer, { color: colors.textMuted }]}>
-          Вспомогательный инструмент — при тяжёлой аллергии сверяйтесь с этикеткой
+          {t('disclaimer_footer')}
         </Text>
       </KeyboardAvoidingView>
 

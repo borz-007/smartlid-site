@@ -17,6 +17,7 @@ import { ALLERGENS } from '../constants/allergens';
 import { isAIConfigured } from '../constants/config';
 import { useProfile } from '../context/ProfileContext';
 import { useTheme } from '../context/ThemeContext';
+import { SUPPORTED_LOCALES, useI18n } from '../i18n';
 import { resetOnboarding } from '../storage/onboardingStorage';
 import { clearHistory } from '../storage/historyStorage';
 import { clearFavorites, clearBlacklist } from '../storage/favoritesStorage';
@@ -29,6 +30,7 @@ interface Props {
 export function SettingsScreen({ onClose }: Props) {
   const { colors, mode, setMode } = useTheme();
   const { profile, update, toggleAllergen, addStopWord, removeStopWord } = useProfile();
+  const { t, locale, setLocale } = useI18n();
   const [draft, setDraft] = useState('');
 
   const submitWord = () => {
@@ -46,14 +48,14 @@ export function SettingsScreen({ onClose }: Props) {
   }
 
   const handleClearAll = () => {
-    Alert.alert('Очистить все данные?', 'История, избранное, чёрный список и кэш будут удалены', [
-      { text: 'Отмена', style: 'cancel' },
+    Alert.alert(t('clear_all_confirm'), t('clear_all_msg'), [
+      { text: t('cancel'), style: 'cancel' },
       {
-        text: 'Удалить',
+        text: t('delete'),
         style: 'destructive',
         onPress: async () => {
           await Promise.all([clearHistory(), clearFavorites(), clearBlacklist(), clearCache()]);
-          Alert.alert('Готово', 'Все данные очищены');
+          Alert.alert(t('done'), t('all_cleared'));
         },
       },
     ]);
@@ -61,24 +63,24 @@ export function SettingsScreen({ onClose }: Props) {
 
   const handleResetOnboarding = async () => {
     await resetOnboarding();
-    Alert.alert('Готово', 'При следующем запуске приложение покажет экран приветствия');
+    Alert.alert(t('done'), t('redo_onboarding_msg'));
   };
 
   return (
     <SafeAreaView style={[styles.safe, { backgroundColor: colors.bg }]} edges={['top', 'bottom']}>
       <View style={styles.header}>
-        <Pressable onPress={onClose} hitSlop={12} accessibilityLabel="Назад">
+        <Pressable onPress={onClose} hitSlop={12} accessibilityLabel={t('history')}>
           <Ionicons name="chevron-back" size={28} color={colors.primary} />
         </Pressable>
-        <Text style={[styles.headerTitle, { color: colors.text }]}>Профиль</Text>
+        <Text style={[styles.headerTitle, { color: colors.text }]}>{t('profile')}</Text>
         <View style={{ width: 28 }} />
       </View>
 
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
-          <Section title="Оформление">
+          <Section title={t('appearance')}>
             <View style={[styles.themeRow, { borderBottomColor: colors.border }]}>
-              <Text style={[styles.themeLabel, { color: colors.text }]}>Тема</Text>
+              <Text style={[styles.themeLabel, { color: colors.text }]}>{t('theme')}</Text>
               <View style={styles.themeBtns}>
                 {(['system', 'light', 'dark'] as const).map((m) => (
                   <Pressable
@@ -87,35 +89,50 @@ export function SettingsScreen({ onClose }: Props) {
                     onPress={() => setMode(m)}
                   >
                     <Text style={[styles.themeBtnText, { color: mode === m ? colors.white : colors.text }]}>
-                      {m === 'system' ? 'Авто' : m === 'light' ? 'Светлая' : 'Тёмная'}
+                      {m === 'system' ? t('theme_auto') : m === 'light' ? t('theme_light') : t('theme_dark')}
                     </Text>
+                  </Pressable>
+                ))}
+              </View>
+            </View>
+
+            <View style={[styles.themeRow, { borderBottomColor: colors.border }]}>
+              <Text style={[styles.themeLabel, { color: colors.text }]}>{t('language')}</Text>
+              <View style={styles.langBtns}>
+                {SUPPORTED_LOCALES.map((l) => (
+                  <Pressable
+                    key={l.code}
+                    style={[styles.langBtn, locale === l.code && { backgroundColor: colors.primary }]}
+                    onPress={() => setLocale(l.code)}
+                  >
+                    <Text style={styles.langFlag}>{l.flag}</Text>
                   </Pressable>
                 ))}
               </View>
             </View>
           </Section>
 
-          <Section title="Религиозные стандарты">
+          <Section title={t('religious')}>
             <ToggleRow
-              label="Halal (строгий фильтр)"
-              hint="Свинина, сало, алкоголь, кармин E120, желатин без сертификата; E471/E422 и сычужный фермент — сомнительно"
+              label={t('halal_filter')}
+              hint={t('halal_full_hint')}
               value={profile.halal}
               onValueChange={(v) => update({ halal: v })}
               colors={colors}
             />
           </Section>
 
-          <Section title="Этические стандарты">
+          <Section title={t('ethical')}>
             <ToggleRow
               label="Vegan"
-              hint="Мясо, рыба, молоко, яйца, мёд, кармин, шеллак E904, воск E901"
+              hint={t('vegan_full_hint')}
               value={profile.vegan}
               onValueChange={(v) => update({ vegan: v })}
               colors={colors}
             />
             <ToggleRow
               label="Vegetarian"
-              hint={profile.vegan ? 'Включено автоматически вместе с Vegan' : 'Убойные продукты и сычужный фермент; молоко и яйца разрешены'}
+              hint={profile.vegan ? t('veg_auto_hint') : t('veg_full_hint')}
               value={profile.vegetarian || profile.vegan}
               disabled={profile.vegan}
               onValueChange={(v) => update({ vegetarian: v })}
@@ -123,44 +140,44 @@ export function SettingsScreen({ onClose }: Props) {
             />
           </Section>
 
-          <Section title="Аллергены (14 по нормам ЕС)">
+          <Section title={t('eu_allergens')}>
             {ALLERGENS.map((a) => (
               <ToggleRow
                 key={a.id}
-                label={a.labelRu}
-                hint={a.hintRu}
+                label={t(a.labelKey)}
+                hint={t(a.hintKey)}
                 value={profile.allergens[a.id]}
                 onValueChange={() => toggleAllergen(a.id)}
                 colors={colors}
               />
             ))}
             <ToggleRow
-              label="Учитывать следы"
-              hint="«kan sporen bevatten…», «peut contenir des traces…» — считать критическим риском"
+              label={t('consider_traces')}
+              hint={t('traces_hint_settings')}
               value={profile.considerTraces}
               onValueChange={(v) => update({ considerTraces: v })}
               colors={colors}
             />
           </Section>
 
-          <Section title="Персональные стоп-слова">
+          <Section title={t('stop_words')}>
             <View style={styles.inputRow}>
               <TextInput
                 style={[styles.input, { borderColor: colors.border, color: colors.text }]}
                 value={draft}
                 onChangeText={setDraft}
-                placeholder="например: пальмовое масло"
+                placeholder={t('stop_word_placeholder')}
                 placeholderTextColor={colors.textMuted}
                 onSubmitEditing={submitWord}
                 returnKeyType="done"
               />
-              <Pressable style={[styles.addBtn, { backgroundColor: colors.primary }]} onPress={submitWord} accessibilityLabel="Добавить">
+              <Pressable style={[styles.addBtn, { backgroundColor: colors.primary }]} onPress={submitWord}>
                 <Ionicons name="add" size={22} color={colors.white} />
               </Pressable>
             </View>
             <View style={styles.chips}>
               {profile.customStopWords.length === 0 ? (
-                <Text style={[styles.hintText, { color: colors.textMuted }]}>Пока пусто.</Text>
+                <Text style={[styles.hintText, { color: colors.textMuted }]}>{t('empty_stop')}</Text>
               ) : (
                 profile.customStopWords.map((w) => (
                   <Pressable key={w} style={[styles.chip, { backgroundColor: colors.bg }]} onPress={() => removeStopWord(w)}>
@@ -172,34 +189,29 @@ export function SettingsScreen({ onClose }: Props) {
             </View>
           </Section>
 
-          <Section title="ИИ-аудитор">
+          <Section title={t('ai_auditor')}>
             <ToggleRow
-              label="Проверять сложные составы через Gemini"
-              hint={
-                isAIConfigured()
-                  ? 'Gemini ищет состав в интернете, если товара нет в базе, и проверяет каждый состав.'
-                  : 'Ключ EXPO_PUBLIC_GEMINI_API_KEY не задан — работает только локальный фильтр'
-              }
+              label={t('ai_toggle')}
+              hint={isAIConfigured() ? t('ai_hint_configured') : t('ai_hint_not_configured')}
               value={profile.aiEnabled}
               onValueChange={(v) => update({ aiEnabled: v })}
               colors={colors}
             />
           </Section>
 
-          <Section title="Данные">
+          <Section title={t('data_section')}>
             <Pressable style={[styles.textBtn, { borderBottomColor: colors.border }]} onPress={handleClearAll}>
               <Ionicons name="trash-outline" size={20} color="#D92D20" />
-              <Text style={[styles.textBtnLabel, { color: '#D92D20' }]}>Очистить все данные</Text>
+              <Text style={[styles.textBtnLabel, { color: '#D92D20' }]}>{t('clear_all')}</Text>
             </Pressable>
             <Pressable style={[styles.textBtn, { borderBottomColor: colors.border }]} onPress={handleResetOnboarding}>
               <Ionicons name="refresh-outline" size={20} color={colors.primary} />
-              <Text style={[styles.textBtnLabel, { color: colors.primary }]}>Пройти приветствие снова</Text>
+              <Text style={[styles.textBtnLabel, { color: colors.primary }]}>{t('redo_onboarding')}</Text>
             </Pressable>
           </Section>
 
           <Text style={[styles.disclaimer, { color: colors.textMuted }]}>
-            Приложение — вспомогательный инструмент. При тяжёлой аллергии всегда сверяйтесь с этикеткой и
-            производителем: базы данных и распознавание могут содержать ошибки.
+            {t('settings_disclaimer')}
           </Text>
         </ScrollView>
       </KeyboardAvoidingView>
@@ -229,6 +241,9 @@ const styles = StyleSheet.create({
   themeBtns: { flexDirection: 'row', gap: 6 },
   themeBtn: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8 },
   themeBtnText: { fontSize: 13, fontWeight: '600' },
+  langBtns: { flexDirection: 'row', gap: 4 },
+  langBtn: { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center' },
+  langFlag: { fontSize: 20 },
   inputRow: { flexDirection: 'row', padding: 12, gap: 8 },
   input: {
     flex: 1, borderWidth: 1, borderRadius: 10,

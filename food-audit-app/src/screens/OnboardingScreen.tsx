@@ -6,6 +6,7 @@ import { ToggleRow } from '../components/ToggleRow';
 import { ALLERGENS } from '../constants/allergens';
 import { useProfile } from '../context/ProfileContext';
 import { useTheme } from '../context/ThemeContext';
+import { useI18n } from '../i18n';
 import { setOnboardingComplete } from '../storage/onboardingStorage';
 
 interface Props {
@@ -17,6 +18,7 @@ type Step = 'disclaimer' | 'diet' | 'allergens';
 export function OnboardingScreen({ onDone }: Props) {
   const { colors } = useTheme();
   const { update, toggleAllergen, profile } = useProfile();
+  const { t } = useI18n();
   const [step, setStep] = useState<Step>('disclaimer');
 
   const finish = async () => {
@@ -33,21 +35,19 @@ export function OnboardingScreen({ onDone }: Props) {
           </View>
           <Text style={[styles.bigTitle, { color: colors.text }]}>Food Audit</Text>
           <Text style={[styles.subtitle, { color: colors.textMuted }]}>
-            Проверка состава продуктов{'\n'}Halal · Vegan · Аллергены
+            {t('onboarding_subtitle')}
           </Text>
 
           <View style={[styles.disclaimerCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
             <Ionicons name="warning-outline" size={24} color="#F5B300" />
             <Text style={[styles.disclaimerText, { color: colors.text }]}>
-              Это вспомогательный инструмент. Приложение использует базы данных и ИИ, которые могут содержать ошибки.{'\n\n'}
-              При тяжёлой аллергии или строгих религиозных требованиях всегда сверяйтесь с этикеткой и производителем.{'\n\n'}
-              Разработчик не несёт ответственности за решения, принятые на основе результатов проверки.
+              {t('disclaimer_text')}
             </Text>
           </View>
         </ScrollView>
 
         <Pressable style={[styles.btn, { backgroundColor: colors.primary }]} onPress={() => setStep('diet')}>
-          <Text style={[styles.btnText, { color: colors.white }]}>Понятно, продолжить</Text>
+          <Text style={[styles.btnText, { color: colors.white }]}>{t('understand_continue')}</Text>
         </Pressable>
       </SafeAreaView>
     );
@@ -56,25 +56,25 @@ export function OnboardingScreen({ onDone }: Props) {
   if (step === 'diet') {
     return (
       <SafeAreaView style={[styles.safe, { backgroundColor: colors.bg }]} edges={['top', 'bottom']}>
-        <Text style={[styles.stepTitle, { color: colors.text }]}>Ваши стандарты питания</Text>
-        <Text style={[styles.stepHint, { color: colors.textMuted }]}>Можно изменить позже в настройках</Text>
+        <Text style={[styles.stepTitle, { color: colors.text }]}>{t('your_diet')}</Text>
+        <Text style={[styles.stepHint, { color: colors.textMuted }]}>{t('change_later')}</Text>
 
         <View style={[styles.card, { backgroundColor: colors.card }]}>
           <ToggleRow
             label="Halal"
-            hint="Свинина, алкоголь, кармин, желатин без сертификата"
+            hint={t('halal_hint')}
             value={profile.halal}
             onValueChange={(v) => update({ halal: v })}
           />
           <ToggleRow
             label="Vegan"
-            hint="Мясо, рыба, молоко, яйца, мёд, кармин"
+            hint={t('vegan_hint')}
             value={profile.vegan}
             onValueChange={(v) => update({ vegan: v })}
           />
           <ToggleRow
             label="Vegetarian"
-            hint="Убойные продукты; молоко и яйца разрешены"
+            hint={t('vegetarian_hint')}
             value={profile.vegetarian || profile.vegan}
             disabled={profile.vegan}
             onValueChange={(v) => update({ vegetarian: v })}
@@ -83,7 +83,7 @@ export function OnboardingScreen({ onDone }: Props) {
 
         <View style={{ flex: 1 }} />
         <Pressable style={[styles.btn, { backgroundColor: colors.primary }]} onPress={() => setStep('allergens')}>
-          <Text style={[styles.btnText, { color: colors.white }]}>Далее</Text>
+          <Text style={[styles.btnText, { color: colors.white }]}>{t('next')}</Text>
         </Pressable>
       </SafeAreaView>
     );
@@ -91,23 +91,23 @@ export function OnboardingScreen({ onDone }: Props) {
 
   return (
     <SafeAreaView style={[styles.safe, { backgroundColor: colors.bg }]} edges={['top', 'bottom']}>
-      <Text style={[styles.stepTitle, { color: colors.text }]}>Аллергены</Text>
-      <Text style={[styles.stepHint, { color: colors.textMuted }]}>Выберите продукты, на которые есть аллергия</Text>
+      <Text style={[styles.stepTitle, { color: colors.text }]}>{t('allergens_title')}</Text>
+      <Text style={[styles.stepHint, { color: colors.textMuted }]}>{t('allergens_subtitle')}</Text>
 
       <ScrollView style={{ flex: 1 }}>
         <View style={[styles.card, { backgroundColor: colors.card }]}>
           {ALLERGENS.map((a) => (
             <ToggleRow
               key={a.id}
-              label={a.labelRu}
-              hint={a.hintRu}
+              label={t(a.labelKey)}
+              hint={t(a.hintKey)}
               value={profile.allergens[a.id]}
               onValueChange={() => toggleAllergen(a.id)}
             />
           ))}
           <ToggleRow
-            label="Учитывать следы"
-            hint="«Может содержать следы…» — критический риск"
+            label={t('consider_traces')}
+            hint={t('consider_traces_hint')}
             value={profile.considerTraces}
             onValueChange={(v) => update({ considerTraces: v })}
           />
@@ -115,7 +115,7 @@ export function OnboardingScreen({ onDone }: Props) {
       </ScrollView>
 
       <Pressable style={[styles.btn, { backgroundColor: colors.primary }]} onPress={finish}>
-        <Text style={[styles.btnText, { color: colors.white }]}>Готово</Text>
+        <Text style={[styles.btnText, { color: colors.white }]}>{t('done')}</Text>
       </Pressable>
     </SafeAreaView>
   );

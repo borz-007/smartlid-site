@@ -4,6 +4,7 @@ import { ActivityIndicator, View } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { ProfileProvider, useProfile } from './src/context/ProfileContext';
 import { ThemeProvider, useTheme } from './src/context/ThemeContext';
+import { I18nProvider, useI18n } from './src/i18n';
 import { FavoritesScreen } from './src/screens/FavoritesScreen';
 import { HistoryScreen } from './src/screens/HistoryScreen';
 import { HomeScreen } from './src/screens/HomeScreen';
@@ -18,15 +19,16 @@ type ScanMode = 'barcode' | 'photo';
 function Root() {
   const { loaded } = useProfile();
   const { isDark, colors } = useTheme();
+  const { ready: i18nReady } = useI18n();
   const [screen, setScreen] = useState<Screen>('loading');
   const [initialMode, setInitialMode] = useState<ScanMode>('barcode');
 
   useEffect(() => {
-    if (!loaded) return;
+    if (!loaded || !i18nReady) return;
     isOnboardingComplete().then((done) => {
       setScreen(done ? 'home' : 'onboarding');
     });
-  }, [loaded]);
+  }, [loaded, i18nReady]);
 
   if (screen === 'loading') {
     return (
@@ -107,11 +109,13 @@ function Root() {
 export default function App() {
   return (
     <SafeAreaProvider>
-      <ThemeProvider>
-        <ProfileProvider>
-          <Root />
-        </ProfileProvider>
-      </ThemeProvider>
+      <I18nProvider>
+        <ThemeProvider>
+          <ProfileProvider>
+            <Root />
+          </ProfileProvider>
+        </ThemeProvider>
+      </I18nProvider>
     </SafeAreaProvider>
   );
 }

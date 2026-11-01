@@ -42,13 +42,41 @@ export const severityColors: Record<Severity, { bg: string; fg: string; soft: st
   SAFE: { bg: '#12B76A', fg: '#FFFFFF', soft: '#D1FADF' },
 };
 
+export const severityEmojis: Record<Severity, string> = {
+  BANNED: '🔴',
+  WARNING: '🟡',
+  SAFE: '🟢',
+};
+
+type TFn = (key: string) => string;
+
+export function getSeverityLabels(t: TFn): Record<Severity, { title: string; subtitle: string; emoji: string }> {
+  return {
+    BANNED: { title: t('verdict_banned'), subtitle: t('verdict_banned_subtitle'), emoji: '🔴' },
+    WARNING: { title: t('verdict_warning'), subtitle: t('verdict_warning_subtitle'), emoji: '🟡' },
+    SAFE: { title: t('verdict_safe'), subtitle: t('verdict_safe_subtitle'), emoji: '🟢' },
+  };
+}
+
+export type SpecificVerdict = { title: string; subtitle: string };
+
+export function getSpecificVerdicts(t: TFn): Record<string, SpecificVerdict> {
+  return {
+    halal: { title: t('specific_haram'), subtitle: t('specific_haram_subtitle') },
+    vegan: { title: t('specific_not_vegan'), subtitle: t('specific_not_vegan_subtitle') },
+    vegetarian: { title: t('specific_not_vegetarian'), subtitle: t('specific_not_vegetarian_subtitle') },
+    allergen: { title: t('specific_allergen'), subtitle: t('specific_allergen_subtitle') },
+    custom: { title: t('specific_stopword'), subtitle: t('specific_stopword_subtitle') },
+  };
+}
+
+/** Kept for backward compat in non-i18n code paths (tests). */
 export const severityLabels: Record<Severity, { title: string; subtitle: string; emoji: string }> = {
   BANNED: { title: 'ЗАПРЕЩЕНО', subtitle: 'Найден прямой запрет для вашего профиля', emoji: '🔴' },
   WARNING: { title: 'СОМНИТЕЛЬНО', subtitle: 'Есть следы аллергенов или добавки неясного происхождения', emoji: '🟡' },
   SAFE: { title: 'БЕЗОПАСНО', subtitle: 'Проблем для вашего профиля не найдено', emoji: '🟢' },
 };
 
-export type SpecificVerdict = { title: string; subtitle: string };
 export const specificVerdicts: Record<string, SpecificVerdict> = {
   halal: { title: 'ХАРАМ', subtitle: 'Содержит запрещённые компоненты (Halal)' },
   vegan: { title: 'НЕ ВЕГАНСКОЕ', subtitle: 'Содержит продукты животного происхождения' },
