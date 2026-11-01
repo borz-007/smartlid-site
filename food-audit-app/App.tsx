@@ -3,14 +3,17 @@ import React, { useState } from 'react';
 import { ActivityIndicator, View } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { ProfileProvider, useProfile } from './src/context/ProfileContext';
+import { HomeScreen } from './src/screens/HomeScreen';
 import { ScannerScreen } from './src/screens/ScannerScreen';
 import { SettingsScreen } from './src/screens/SettingsScreen';
 
-type Screen = 'scanner' | 'settings';
+type Screen = 'home' | 'scanner' | 'settings';
+type ScanMode = 'barcode' | 'photo';
 
 function Root() {
   const { loaded } = useProfile();
-  const [screen, setScreen] = useState<Screen>('scanner');
+  const [screen, setScreen] = useState<Screen>('home');
+  const [initialMode, setInitialMode] = useState<ScanMode>('barcode');
 
   if (!loaded) {
     return (
@@ -20,15 +23,41 @@ function Root() {
     );
   }
 
-  return screen === 'scanner' ? (
-    <>
-      <StatusBar style="light" />
-      <ScannerScreen onOpenSettings={() => setScreen('settings')} />
-    </>
-  ) : (
+  const openScanner = (mode: ScanMode) => {
+    setInitialMode(mode);
+    setScreen('scanner');
+  };
+
+  if (screen === 'settings') {
+    return (
+      <>
+        <StatusBar style="dark" />
+        <SettingsScreen onClose={() => setScreen('home')} />
+      </>
+    );
+  }
+
+  if (screen === 'scanner') {
+    return (
+      <>
+        <StatusBar style="light" />
+        <ScannerScreen
+          initialMode={initialMode}
+          onOpenSettings={() => setScreen('settings')}
+          onBack={() => setScreen('home')}
+        />
+      </>
+    );
+  }
+
+  return (
     <>
       <StatusBar style="dark" />
-      <SettingsScreen onClose={() => setScreen('scanner')} />
+      <HomeScreen
+        onScanBarcode={() => openScanner('barcode')}
+        onScanPhoto={() => openScanner('photo')}
+        onOpenSettings={() => setScreen('settings')}
+      />
     </>
   );
 }

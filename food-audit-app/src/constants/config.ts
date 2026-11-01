@@ -5,7 +5,7 @@
  */
 export const config = {
   geminiApiKey: process.env.EXPO_PUBLIC_GEMINI_API_KEY ?? '',
-  geminiModel: process.env.EXPO_PUBLIC_GEMINI_MODEL || 'gemini-2.5-flash',
+  geminiModel: process.env.EXPO_PUBLIC_GEMINI_MODEL || 'gemini-3.8-flash',
   /** Необязательный прокси: POST {model, body} → ответ generateContent. */
   aiProxyUrl: process.env.EXPO_PUBLIC_AI_PROXY_URL ?? '',
   offBaseUrl: 'https://world.openfoodfacts.org/api/v2/product',

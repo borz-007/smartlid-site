@@ -13,16 +13,18 @@ import type { ScanResult } from '../types';
 type Mode = 'barcode' | 'photo';
 
 interface Props {
+  initialMode?: Mode;
   onOpenSettings: () => void;
+  onBack?: () => void;
 }
 
 const BARCODE_TYPES = ['ean13', 'ean8', 'upc_a', 'upc_e'] as const;
 
-export function ScannerScreen({ onOpenSettings }: Props) {
+export function ScannerScreen({ initialMode = 'barcode', onOpenSettings, onBack }: Props) {
   const { profile } = useProfile();
   const [permission, requestPermission] = useCameraPermissions();
   const cameraRef = useRef<CameraView>(null);
-  const [mode, setMode] = useState<Mode>('barcode');
+  const [mode, setMode] = useState<Mode>(initialMode);
   const [torch, setTorch] = useState(false);
   const [busy, setBusy] = useState(false);
   const [busyText, setBusyText] = useState('');
@@ -132,6 +134,13 @@ export function ScannerScreen({ onOpenSettings }: Props) {
 
       <SafeAreaView style={styles.ui} edges={['top', 'bottom']} pointerEvents="box-none">
         <View style={styles.topBar}>
+          {onBack ? (
+            <Pressable style={styles.roundBtn} onPress={onBack} accessibilityLabel="Назад">
+              <Ionicons name="chevron-back" size={26} color={colors.white} />
+            </Pressable>
+          ) : (
+            <View style={{ width: 48 }} />
+          )}
           <Pressable style={styles.roundBtn} onPress={() => setTorch((t) => !t)} accessibilityLabel="Фонарик">
             <Ionicons name={torch ? 'flashlight' : 'flashlight-outline'} size={24} color={colors.white} />
           </Pressable>
