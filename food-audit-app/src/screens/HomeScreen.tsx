@@ -234,7 +234,13 @@ export function HomeScreen({
         </View>
       ) : null}
 
-      <ResultModal key={resultId} result={result} onClose={() => setResult(null)} />
+      <ResultModal
+        key={resultId}
+        result={result}
+        onClose={() => setResult(null)}
+        profile={profile}
+        onSelectAlternative={(barcode) => { setResult(null); setQuery(barcode); handleSelectProduct({ barcode, name: '' }); }}
+      />
     </SafeAreaView>
   );
 }

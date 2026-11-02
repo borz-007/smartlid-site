@@ -15,11 +15,20 @@ import {
   removeFromBlacklist,
 } from '../storage/favoritesStorage';
 import { setCachedResult } from '../storage/cacheStorage';
-import type { IngredientsSource, Issue, IssueCategory, ScanResult, SavedProduct } from '../types';
+import type { ExpiryResult, IngredientsSource, Issue, IssueCategory, ScanResult, SavedProduct, UserProfile } from '../types';
+import { NutriScoreBar } from './NutriScoreBar';
+import { EcoScoreBar } from './EcoScoreBar';
+import { NutrientFactorsList } from './NutrientFactorsList';
+import { AdditivesList } from './AdditivesList';
+import { AlternativesSection } from './AlternativesSection';
+import { ExpiryBadge } from './ExpiryBadge';
 
 interface Props {
   result: ScanResult | null;
   onClose: () => void;
+  profile?: UserProfile;
+  expiry?: ExpiryResult | null;
+  onSelectAlternative?: (barcode: string) => void;
 }
 
 function IssueCard({ issue, categoryLabels, sourceLabels }: { issue: Issue; categoryLabels: Record<IssueCategory, string>; sourceLabels: Record<Issue['source'], string> }) {
@@ -50,7 +59,7 @@ function toSavedProduct(result: ScanResult): SavedProduct {
   };
 }
 
-export function ResultModal({ result, onClose }: Props) {
+export function ResultModal({ result, onClose, profile, expiry, onSelectAlternative }: Props) {
   const { t } = useI18n();
   const [fav, setFav] = useState(false);
   const [bl, setBl] = useState(false);
@@ -118,10 +127,16 @@ export function ResultModal({ result, onClose }: Props) {
   const specSubtitle = getSpecificSubtitle();
   const { product } = result;
 
+  const shouldShowAlternatives = profile && result.categoryTag && (
+    result.verdict === 'BANNED' ||
+    (result.nutriScore && (result.nutriScore.grade === 'd' || result.nutriScore.grade === 'e'))
+  );
+
   const handleShare = async () => {
     const name = product?.name || t('product');
     const issues = result.issues.map((i) => `- ${i.translationRu}`).join('\n');
-    const text = `${name}\n${t('verdict_text')}: ${specTitle || label.title}\n${issues ? `\n${t('issues_found')}:\n${issues}` : t('no_issues_short')}\n\n${t('checked_by')}`;
+    const nsInfo = result.nutriScore ? ` | Nutri-Score: ${result.nutriScore.grade.toUpperCase()} (${result.nutriScore.score100}/100)` : '';
+    const text = `${name}${nsInfo}\n${t('verdict_text')}: ${specTitle || label.title}\n${issues ? `\n${t('issues_found')}:\n${issues}` : t('no_issues_short')}\n\n${t('checked_by')}`;
     try {
       await Share.share({ message: text });
     } catch {}
@@ -181,6 +196,25 @@ export function ResultModal({ result, onClose }: Props) {
             </Pressable>
           </View>
 
+          {/* Expiry Badge */}
+          {expiry && expiry.date ? <ExpiryBadge data={expiry} /> : null}
+
+          {/* Nutri-Score */}
+          {result.nutriScore ? <NutriScoreBar data={result.nutriScore} /> : null}
+
+          {/* Eco-Score */}
+          {result.ecoScore ? <EcoScoreBar data={result.ecoScore} /> : null}
+
+          {/* Nutrient Factors */}
+          {result.nutrientFactors && result.nutrientFactors.length > 0 ? (
+            <NutrientFactorsList factors={result.nutrientFactors} />
+          ) : null}
+
+          {/* Additives */}
+          {result.additives && result.additives.length > 0 ? (
+            <AdditivesList additives={result.additives} />
+          ) : null}
+
           {result.aiSummaryRu ? (
             <View style={styles.summary}>
               <Ionicons name="sparkles-outline" size={16} color="#1F6FEB" />
@@ -232,6 +266,16 @@ export function ResultModal({ result, onClose }: Props) {
               ))}
             </>
           ) : null}
+
+          {/* Alternatives */}
+          {shouldShowAlternatives && profile ? (
+            <AlternativesSection
+              categoryTag={result.categoryTag}
+              profile={profile}
+              excludeBarcode={product?.barcode}
+              onSelect={onSelectAlternative}
+            />
+          ) : null}
         </ScrollView>
 
         <Pressable style={styles.nextBtn} onPress={onClose} accessibilityRole="button">
@@ -256,7 +300,7 @@ const styles = StyleSheet.create({
   muted: { fontSize: 14, color: '#5B6372' },
   actions: {
     flexDirection: 'row', justifyContent: 'space-around',
-    paddingVertical: 12, marginBottom: 4,
+    paddingVertical: 12, marginBottom: 10,
     borderTopWidth: StyleSheet.hairlineWidth, borderBottomWidth: StyleSheet.hairlineWidth,
     borderColor: '#E3E6EB',
   },
@@ -264,7 +308,7 @@ const styles = StyleSheet.create({
   actionLabel: { fontSize: 11, color: '#5B6372' },
   summary: {
     flexDirection: 'row', gap: 8, backgroundColor: '#FFFFFF',
-    padding: 12, borderRadius: 10, marginBottom: 4,
+    padding: 12, borderRadius: 10, marginBottom: 10,
   },
   summaryText: { flex: 1, fontSize: 14, color: '#14171F', lineHeight: 19 },
   h2: { fontSize: 17, fontWeight: '700', color: '#14171F', marginTop: 18, marginBottom: 8 },

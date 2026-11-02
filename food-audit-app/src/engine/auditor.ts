@@ -11,16 +11,24 @@
  */
 import { isAIConfigured } from '../constants/config';
 import type {
+  AdditiveAuditResult,
+  EcoScoreData,
+  EcoScoreGrade,
   IngredientsSource,
   Issue,
   IssueCategory,
+  NutrientFactor,
+  NutriScoreData,
   RawIngredients,
   ScanResult,
   Severity,
   UserProfile,
 } from '../types';
 import { maxSeverity } from '../types';
+import { analyzeAdditives } from '../services/additives';
 import { auditImageWithAI, auditTextWithAI, findProductOnWeb, type AiAudit, type AiIssue } from '../services/gemini';
+import { computeNutriScore } from '../services/nutriScore';
+import { analyzeNutrientFactors } from '../services/nutrientFactors';
 import { fetchProductByBarcode, ProductNotFoundError } from '../services/openFoodFacts';
 import { analyzeLocal, computeVerdict, hasActiveDiet, type LocalResult } from './localFilter';
 import { normalizePlain } from './textNormalize';
@@ -79,6 +87,12 @@ export function mergeIssues(local: Issue[], ai: Issue[]): Issue[] {
   return out;
 }
 
+function buildEcoScore(raw: RawIngredients): EcoScoreData | undefined {
+  const g = raw.ecoscoreGrade;
+  if (!g || !/^[a-e]$/.test(g)) return undefined;
+  return { grade: g as EcoScoreGrade, score: raw.ecoscoreScore };
+}
+
 function buildResult(
   raw: RawIngredients,
   local: LocalResult,
@@ -102,6 +116,11 @@ function buildResult(
   }
   if (local.certifiedHalal && profile.halal) notes.push('На упаковке/в базе указана халяль-маркировка.');
 
+  const nutriScore: NutriScoreData | undefined = computeNutriScore(raw.nutriments, raw.nutriscoreGrade, raw.nutriscoreScore);
+  const ecoScore: EcoScoreData | undefined = buildEcoScore(raw);
+  const additives: AdditiveAuditResult[] = raw.additivesTags?.length ? analyzeAdditives(raw.additivesTags) : [];
+  const nutrientFactors: NutrientFactor[] = analyzeNutrientFactors(raw.nutriments);
+
   return {
     verdict,
     issues,
@@ -112,6 +131,12 @@ function buildResult(
     aiSummaryRu: ai?.summary_ru || undefined,
     usedAI: Boolean(ai),
     notes,
+    nutriScore,
+    ecoScore,
+    nutriments: raw.nutriments,
+    additives,
+    nutrientFactors,
+    categoryTag: raw.categoriesTags?.[0],
   };
 }
 

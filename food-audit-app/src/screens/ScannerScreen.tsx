@@ -9,9 +9,10 @@ import { useProfile } from '../context/ProfileContext';
 import { auditBarcode, auditPhoto } from '../engine/auditor';
 import { useI18n } from '../i18n';
 import { ProductNotFoundError } from '../services/openFoodFacts';
-import type { ScanResult } from '../types';
+import { scanExpiryDate } from '../services/expiryScanner';
+import type { ExpiryResult, ScanResult } from '../types';
 
-type Mode = 'barcode' | 'photo';
+type Mode = 'barcode' | 'photo' | 'expiry';
 
 interface Props {
   initialMode?: Mode;
@@ -31,11 +32,13 @@ export function ScannerScreen({ initialMode = 'barcode', onOpenSettings, onBack 
   const [busy, setBusy] = useState(false);
   const [busyText, setBusyText] = useState('');
   const [result, setResult] = useState<ScanResult | null>(null);
+  const [expiry, setExpiry] = useState<ExpiryResult | null>(null);
   const [resultId, setResultId] = useState(0);
   const lockRef = useRef(false);
 
-  const showResult = (r: ScanResult) => {
+  const showResult = (r: ScanResult, exp?: ExpiryResult | null) => {
     setResult(r);
+    setExpiry(exp ?? null);
     setResultId((n) => n + 1);
   };
 
@@ -86,8 +89,39 @@ export function ScannerScreen({ initialMode = 'barcode', onOpenSettings, onBack 
     }
   };
 
+  const handleExpiryCapture = async () => {
+    if (busy || !cameraRef.current) return;
+    setBusy(true);
+    setBusyText(t('recognizing'));
+    try {
+      const photo = await cameraRef.current.takePictureAsync({ base64: true, quality: 0.7, skipProcessing: false });
+      if (!photo?.base64) throw new Error(t('no_photo'));
+      const expiryResult = await scanExpiryDate(photo.base64);
+      if (!expiryResult.date) {
+        fail(t('expiry_title'), t('photo_error_hint'));
+      } else {
+        setExpiry(expiryResult);
+        setResultId((n) => n + 1);
+        Alert.alert(
+          t('expiry_title'),
+          expiryResult.status === 'expired'
+            ? `${t('expiry_expired')} — ${expiryResult.rawText}`
+            : expiryResult.status === 'expiring_soon'
+              ? `${t('expiry_expiring')} — ${t('expiry_days_left', { days: String(expiryResult.daysRemaining) })}`
+              : `${t('expiry_fresh')} — ${t('expiry_days_left', { days: String(expiryResult.daysRemaining) })}`,
+          [{ text: t('ok') }],
+        );
+      }
+    } catch (e: any) {
+      fail(t('photo_error'), e?.message ?? t('photo_error_hint'));
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const closeResult = () => {
     setResult(null);
+    setExpiry(null);
     lockRef.current = false;
   };
 
@@ -126,7 +160,7 @@ export function ScannerScreen({ initialMode = 'barcode', onOpenSettings, onBack 
       <View style={styles.overlay} pointerEvents="none">
         <View style={[styles.frame, mode === 'barcode' ? styles.frameBarcode : styles.framePhoto]} />
         <Text style={styles.hint}>
-          {mode === 'barcode' ? t('aim_barcode') : t('aim_photo')}
+          {mode === 'barcode' ? t('aim_barcode') : mode === 'expiry' ? t('expiry_scan_hint') : t('aim_photo')}
         </Text>
       </View>
 
@@ -148,26 +182,26 @@ export function ScannerScreen({ initialMode = 'barcode', onOpenSettings, onBack 
         </View>
 
         <View style={styles.bottom}>
-          {mode === 'photo' ? (
-            <Pressable style={styles.shutter} onPress={handleCapture} disabled={busy}>
-              <View style={styles.shutterInner} />
+          {(mode === 'photo' || mode === 'expiry') ? (
+            <Pressable style={styles.shutter} onPress={mode === 'expiry' ? handleExpiryCapture : handleCapture} disabled={busy}>
+              <View style={[styles.shutterInner, mode === 'expiry' && { backgroundColor: '#F5B300' }]} />
             </Pressable>
           ) : null}
 
           <View style={styles.segment}>
-            {(['barcode', 'photo'] as Mode[]).map((m) => (
+            {(['barcode', 'photo', 'expiry'] as Mode[]).map((m) => (
               <Pressable
                 key={m}
                 style={[styles.segmentItem, mode === m && styles.segmentActive]}
                 onPress={() => setMode(m)}
               >
                 <Ionicons
-                  name={m === 'barcode' ? 'barcode-outline' : 'document-text-outline'}
+                  name={m === 'barcode' ? 'barcode-outline' : m === 'photo' ? 'document-text-outline' : 'calendar-outline'}
                   size={18}
                   color={mode === m ? colors.text : colors.white}
                 />
                 <Text style={[styles.segmentText, mode === m && styles.segmentTextActive]}>
-                  {m === 'barcode' ? t('barcode_tab') : t('photo_tab')}
+                  {m === 'barcode' ? t('barcode_tab') : m === 'photo' ? t('photo_tab') : t('expiry_tab')}
                 </Text>
               </Pressable>
             ))}
@@ -182,7 +216,7 @@ export function ScannerScreen({ initialMode = 'barcode', onOpenSettings, onBack 
         </View>
       ) : null}
 
-      <ResultModal key={resultId} result={result} onClose={closeResult} />
+      <ResultModal key={resultId} result={result} onClose={closeResult} profile={profile} expiry={expiry} />
     </View>
   );
 }
@@ -240,12 +274,12 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    paddingHorizontal: 16,
+    paddingHorizontal: 12,
     paddingVertical: 10,
     borderRadius: 20,
   },
   segmentActive: { backgroundColor: colors.white },
-  segmentText: { color: colors.white, fontSize: 15, fontWeight: '600' },
+  segmentText: { color: colors.white, fontSize: 13, fontWeight: '600' },
   segmentTextActive: { color: colors.text },
   busy: {
     ...StyleSheet.absoluteFillObject,

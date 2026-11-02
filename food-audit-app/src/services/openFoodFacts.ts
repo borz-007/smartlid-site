@@ -3,8 +3,33 @@
  * Документация API: https://openfoodfacts.github.io/openfoodfacts-server/api/
  */
 import { config } from '../constants/config';
-import type { RawIngredients } from '../types';
+import type { NutrimentData, RawIngredients } from '../types';
 import { fetchWithTimeout, HttpError } from './http';
+
+function parseNutriments(raw?: Record<string, number>): NutrimentData | undefined {
+  if (!raw) return undefined;
+  const n: NutrimentData = {};
+  if (raw['energy-kcal_100g'] !== undefined) n.energy_kcal = raw['energy-kcal_100g'];
+  else if (raw['energy-kcal'] !== undefined) n.energy_kcal = raw['energy-kcal'];
+  if (raw['energy-kj_100g'] !== undefined) n.energy_kj = raw['energy-kj_100g'];
+  if (raw['sugars_100g'] !== undefined) n.sugars = raw['sugars_100g'];
+  else if (raw['sugars'] !== undefined) n.sugars = raw['sugars'];
+  if (raw['saturated-fat_100g'] !== undefined) n.saturated_fat = raw['saturated-fat_100g'];
+  else if (raw['saturated-fat'] !== undefined) n.saturated_fat = raw['saturated-fat'];
+  if (raw['sodium_100g'] !== undefined) n.sodium = raw['sodium_100g'];
+  else if (raw['sodium'] !== undefined) n.sodium = raw['sodium'];
+  if (raw['salt_100g'] !== undefined) n.salt = raw['salt_100g'];
+  else if (raw['salt'] !== undefined) n.salt = raw['salt'];
+  if (raw['fiber_100g'] !== undefined) n.fiber = raw['fiber_100g'];
+  else if (raw['fiber'] !== undefined) n.fiber = raw['fiber'];
+  if (raw['proteins_100g'] !== undefined) n.proteins = raw['proteins_100g'];
+  else if (raw['proteins'] !== undefined) n.proteins = raw['proteins'];
+  if (raw['fruits-vegetables-nuts-estimate-from-ingredients_100g'] !== undefined) {
+    n.fruits_vegetables_nuts_estimate = raw['fruits-vegetables-nuts-estimate-from-ingredients_100g'];
+  }
+  if (n.energy_kcal === undefined && n.sugars === undefined && n.proteins === undefined) return undefined;
+  return n;
+}
 
 const FIELDS = [
   'product_name',
@@ -19,6 +44,13 @@ const FIELDS = [
   'traces_tags',
   'ingredients_analysis_tags',
   'labels_tags',
+  'nutriscore_grade',
+  'nutriscore_score',
+  'ecoscore_grade',
+  'ecoscore_score',
+  'nutriments',
+  'additives_tags',
+  'categories_tags',
 ].join(',');
 
 export class ProductNotFoundError extends Error {
@@ -41,6 +73,13 @@ interface OffProduct {
   traces_tags?: string[];
   ingredients_analysis_tags?: string[];
   labels_tags?: string[];
+  nutriscore_grade?: string;
+  nutriscore_score?: number;
+  ecoscore_grade?: string;
+  ecoscore_score?: number;
+  nutriments?: Record<string, number>;
+  additives_tags?: string[];
+  categories_tags?: string[];
 }
 
 export function isValidBarcode(code: string): boolean {
@@ -113,5 +152,12 @@ export async function fetchProductByBarcode(barcode: string): Promise<RawIngredi
     traceTags: p.traces_tags ?? [],
     analysisTags: p.ingredients_analysis_tags ?? [],
     labelTags: p.labels_tags ?? [],
+    nutriscoreGrade: p.nutriscore_grade,
+    nutriscoreScore: p.nutriscore_score,
+    ecoscoreGrade: p.ecoscore_grade,
+    ecoscoreScore: p.ecoscore_score,
+    nutriments: parseNutriments(p.nutriments),
+    additivesTags: p.additives_tags ?? [],
+    categoriesTags: p.categories_tags ?? [],
   };
 }

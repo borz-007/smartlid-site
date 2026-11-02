@@ -84,6 +84,12 @@ export interface ScanResult {
   usedAI: boolean;
   /** Служебные заметки: «ИИ недоступен», «состав не найден» и т.п. */
   notes: string[];
+  nutriScore?: NutriScoreData;
+  ecoScore?: EcoScoreData;
+  nutriments?: NutrimentData;
+  additives?: AdditiveAuditResult[];
+  nutrientFactors?: NutrientFactor[];
+  categoryTag?: string;
 }
 
 /** Запись в истории сканирований. */
@@ -116,6 +122,69 @@ export interface NamedProfile {
   profile: UserProfile;
 }
 
+// ──────────────── Nutri-Score / Eco-Score / Nutrition ────────────────
+
+export type NutriScoreGrade = 'a' | 'b' | 'c' | 'd' | 'e';
+export type EcoScoreGrade = 'a' | 'b' | 'c' | 'd' | 'e';
+export type AdditiveRiskLevel = 'safe' | 'low' | 'moderate' | 'high' | 'unknown';
+export type HalalAdditiveStatus = 'halal' | 'haram' | 'doubtful';
+
+export interface NutrimentData {
+  energy_kcal?: number;
+  energy_kj?: number;
+  sugars?: number;
+  saturated_fat?: number;
+  sodium?: number;
+  salt?: number;
+  fiber?: number;
+  proteins?: number;
+  fruits_vegetables_nuts_estimate?: number;
+}
+
+export interface NutriScoreData {
+  grade: NutriScoreGrade;
+  score: number;
+  score100: number;
+  computed: boolean;
+}
+
+export interface EcoScoreData {
+  grade: EcoScoreGrade;
+  score?: number;
+}
+
+export interface AdditiveAuditResult {
+  code: string;
+  name: string;
+  riskLevel: AdditiveRiskLevel;
+  halalStatus: HalalAdditiveStatus;
+  description: string;
+}
+
+export interface NutrientFactor {
+  type: 'positive' | 'negative';
+  labelKey: string;
+  value: string;
+  level: 'low' | 'moderate' | 'high';
+}
+
+export interface ExpiryResult {
+  date: string;
+  confidence: 'high' | 'medium' | 'low';
+  daysRemaining: number;
+  status: 'fresh' | 'expiring_soon' | 'expired';
+  rawText: string;
+}
+
+export interface ProductSummary {
+  barcode: string;
+  name: string;
+  brand?: string;
+  imageUrl?: string;
+  nutriScoreGrade?: NutriScoreGrade;
+  score100?: number;
+}
+
 /** Сырые данные, полученные на шаге 1 (штрихкод или фото). */
 export interface RawIngredients {
   text: string;
@@ -125,4 +194,11 @@ export interface RawIngredients {
   traceTags?: string[];
   analysisTags?: string[];
   labelTags?: string[];
+  nutriscoreGrade?: string;
+  nutriscoreScore?: number;
+  ecoscoreGrade?: string;
+  ecoscoreScore?: number;
+  nutriments?: NutrimentData;
+  additivesTags?: string[];
+  categoriesTags?: string[];
 }
