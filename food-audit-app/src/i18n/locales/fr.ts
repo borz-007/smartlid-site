@@ -1,7 +1,7 @@
 import type { Translations } from '../i18n';
 
 const fr: Translations = {
-  app_name: 'Food Audit',
+  app_name: 'SAFA',
   verdict_banned: 'INTERDIT',
   verdict_warning: 'DOUTEUX',
   verdict_safe: 'SÛR',
@@ -138,7 +138,7 @@ const fr: Translations = {
   scan_next: 'Scanner le produit suivant',
   verdict_text: 'Verdict',
   no_issues_short: 'Aucun problème trouvé.',
-  checked_by: 'Vérifié avec Food Audit',
+  checked_by: 'Vérifié avec SAFA',
 
   allergen_gluten: 'Gluten / céréales',
   allergen_gluten_hint: 'blé, seigle, orge, avoine, épeautre',

@@ -125,7 +125,7 @@ export function HomeScreen({
           <Pressable onPress={onOpenHistory} hitSlop={12} accessibilityLabel={t('history')}>
             <Ionicons name="time-outline" size={26} color={colors.text} />
           </Pressable>
-          <Text style={[styles.title, { color: colors.text }]}>Food Audit</Text>
+          <Text style={[styles.title, { color: colors.text }]}>SAFA</Text>
           <Pressable onPress={onOpenSettings} hitSlop={12} accessibilityLabel={t('profile')}>
             <Ionicons name="settings-outline" size={26} color={colors.text} />
           </Pressable>

@@ -1,4 +1,4 @@
-# Food Audit — аудит состава продуктов (Halal · Vegan · Аллергены)
+# SAFA — аудит состава продуктов (Halal · Vegan · Аллергены)
 
 Мобильное приложение на React Native (Expo SDK 52, TypeScript). Сканирует штрихкод или фотографирует
 состав на NL / FR / DE / EN и выдаёт вердикт по профилю пользователя: 🟢 SAFE · 🟡 WARNING · 🔴 BANNED.

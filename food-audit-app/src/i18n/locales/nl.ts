@@ -1,7 +1,7 @@
 import type { Translations } from '../i18n';
 
 const nl: Translations = {
-  app_name: 'Food Audit',
+  app_name: 'SAFA',
   verdict_banned: 'VERBODEN',
   verdict_warning: 'TWIJFELACHTIG',
   verdict_safe: 'VEILIG',
@@ -138,7 +138,7 @@ const nl: Translations = {
   scan_next: 'Volgend product scannen',
   verdict_text: 'Oordeel',
   no_issues_short: 'Geen problemen gevonden.',
-  checked_by: 'Gecontroleerd met Food Audit',
+  checked_by: 'Gecontroleerd met SAFA',
 
   allergen_gluten: 'Gluten / granen',
   allergen_gluten_hint: 'tarwe, rogge, gerst, haver, spelt',

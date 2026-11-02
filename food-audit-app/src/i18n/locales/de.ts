@@ -1,7 +1,7 @@
 import type { Translations } from '../i18n';
 
 const de: Translations = {
-  app_name: 'Food Audit',
+  app_name: 'SAFA',
   verdict_banned: 'VERBOTEN',
   verdict_warning: 'ZWEIFELHAFT',
   verdict_safe: 'SICHER',
@@ -138,7 +138,7 @@ const de: Translations = {
   scan_next: 'Nächstes Produkt scannen',
   verdict_text: 'Urteil',
   no_issues_short: 'Keine Probleme gefunden.',
-  checked_by: 'Geprüft mit Food Audit',
+  checked_by: 'Geprüft mit SAFA',
 
   allergen_gluten: 'Gluten / Getreide',
   allergen_gluten_hint: 'Weizen, Roggen, Gerste, Hafer, Dinkel',

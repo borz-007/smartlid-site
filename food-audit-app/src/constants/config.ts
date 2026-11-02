@@ -10,7 +10,7 @@ export const config = {
   aiProxyUrl: process.env.EXPO_PUBLIC_AI_PROXY_URL ?? '',
   offBaseUrl: 'https://world.openfoodfacts.org/api/v2/product',
   /** Open Food Facts просит указывать собственный User-Agent. */
-  offUserAgent: 'FoodAuditApp/1.0 (React Native; contact: set-your-email@example.com)',
+  offUserAgent: 'SAFA/1.0 (React Native; contact: set-your-email@example.com)',
   requestTimeoutMs: 25000,
 };
 

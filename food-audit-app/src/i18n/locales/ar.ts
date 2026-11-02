@@ -1,7 +1,7 @@
 import type { Translations } from '../i18n';
 
 const ar: Translations = {
-  app_name: 'Food Audit',
+  app_name: 'SAFA',
   verdict_banned: 'ممنوع',
   verdict_warning: 'مشبوه',
   verdict_safe: 'آمن',
@@ -138,7 +138,7 @@ const ar: Translations = {
   scan_next: 'مسح المنتج التالي',
   verdict_text: 'الحكم',
   no_issues_short: 'لم يتم العثور على مشاكل.',
-  checked_by: 'تم التحقق بواسطة Food Audit',
+  checked_by: 'تم التحقق بواسطة SAFA',
 
   allergen_gluten: 'الغلوتين / الحبوب',
   allergen_gluten_hint: 'قمح، جاودار، شعير، شوفان، حنطة',

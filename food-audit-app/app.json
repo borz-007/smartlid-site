@@ -1,10 +1,11 @@
 {
   "expo": {
-    "name": "Food Audit",
+    "name": "SAFA",
     "slug": "food-audit-app",
     "version": "1.0.0",
     "orientation": "portrait",
     "userInterfaceStyle": "light",
+    "icon": "./assets/icon.png",
     "jsEngine": "hermes",
     "ios": {
       "supportsTablet": false,

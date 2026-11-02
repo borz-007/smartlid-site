@@ -2,7 +2,7 @@ import type { Translations } from '../i18n';
 
 const ru: Translations = {
   // Common
-  app_name: 'Food Audit',
+  app_name: 'SAFA',
   verdict_banned: 'ЗАПРЕЩЕНО',
   verdict_warning: 'СОМНИТЕЛЬНО',
   verdict_safe: 'БЕЗОПАСНО',
@@ -146,7 +146,7 @@ const ru: Translations = {
   scan_next: 'Сканировать следующий товар',
   verdict_text: 'Вердикт',
   no_issues_short: 'Проблем не найдено.',
-  checked_by: 'Проверено через Food Audit',
+  checked_by: 'Проверено через SAFA',
 
   // Allergens
   allergen_gluten: 'Глютен / злаки',

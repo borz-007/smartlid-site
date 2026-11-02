@@ -33,7 +33,7 @@ export function OnboardingScreen({ onDone }: Props) {
           <View style={[styles.iconCircle, { backgroundColor: colors.primary }]}>
             <Ionicons name="shield-checkmark" size={56} color={colors.white} />
           </View>
-          <Text style={[styles.bigTitle, { color: colors.text }]}>Food Audit</Text>
+          <Text style={[styles.bigTitle, { color: colors.text }]}>SAFA</Text>
           <Text style={[styles.subtitle, { color: colors.textMuted }]}>
             {t('onboarding_subtitle')}
           </Text>
