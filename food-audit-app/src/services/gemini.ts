@@ -139,7 +139,7 @@ export async function postGenerate(body: object): Promise<any> {
   }
 
   const json: any = await res.json().catch(() => ({}));
-  if (!res.ok) throw geminiHttpError(res.status);
+  if (!res.ok) throw geminiHttpError(res.status, json);
   if (json?.promptFeedback?.blockReason) {
     throw new HttpError(`Gemini заблокировал запрос: ${json.promptFeedback.blockReason}`);
   }
@@ -234,16 +234,32 @@ const WEB_SEARCH_PROMPT = (barcode: string) =>
   'Ответ — только JSON без пояснений: ' +
   '{"found": boolean, "name": string, "brand": string, "manufacturer": string, "ingredients_text": string}';
 
+let searchBlock: { until: number; error: HttpError } | null = null;
+
+export function resetWebSearchCooldown(): void {
+  searchBlock = null;
+}
+
 /**
  * Путь А, запасной вариант: товара нет в Open Food Facts → Gemini ищет его через
  * встроенный инструмент Google Search. Ответ без ссылок-источников не принимается.
  */
 export async function findProductOnWeb(barcode: string): Promise<WebProduct> {
-  const json = await postGenerate({
-    contents: [{ role: 'user', parts: [{ text: WEB_SEARCH_PROMPT(barcode) }] }],
-    tools: [{ google_search: {} }],
-    generationConfig: { temperature: 0 },
-  });
+  if (searchBlock && Date.now() < searchBlock.until) throw searchBlock.error;
+  let json: any;
+  try {
+    json = await postGenerate({
+      contents: [{ role: 'user', parts: [{ text: WEB_SEARCH_PROMPT(barcode) }] }],
+      tools: [{ google_search: {} }],
+      generationConfig: { temperature: 0 },
+    });
+  } catch (e) {
+    // Поиск Google имеет отдельную квоту: после 429 не тратим запросы повторно, пока лимит не отпустит
+    if (e instanceof HttpError && e.status === 429) {
+      searchBlock = { until: Date.now() + Math.min(e.retryAfterSec ?? 60, 600) * 1000, error: e };
+    }
+    throw e;
+  }
 
   const sources: { title: string; uri: string }[] = (json?.candidates?.[0]?.groundingMetadata?.groundingChunks ?? [])
     .map((c: any) => ({ title: String(c?.web?.title ?? ''), uri: String(c?.web?.uri ?? '') }))

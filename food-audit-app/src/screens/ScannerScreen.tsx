@@ -201,7 +201,12 @@ export function ScannerScreen({ initialMode = 'barcode', onOpenSettings, onBack 
                   size={18}
                   color={mode === m ? colors.text : colors.white}
                 />
-                <Text style={[styles.segmentText, mode === m && styles.segmentTextActive]}>
+                <Text
+                  style={[styles.segmentText, mode === m && styles.segmentTextActive]}
+                  numberOfLines={1}
+                  adjustsFontSizeToFit
+                  minimumFontScale={0.7}
+                >
                   {m === 'barcode' ? t('barcode_tab') : m === 'photo' ? t('photo_tab') : t('expiry_tab')}
                 </Text>
               </Pressable>
@@ -270,17 +275,19 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   shutterInner: { width: 60, height: 60, borderRadius: 30, backgroundColor: colors.white },
-  segment: { flexDirection: 'row', backgroundColor: colors.overlay, borderRadius: 24, padding: 4 },
+  segment: { flexDirection: 'row', backgroundColor: colors.overlay, borderRadius: 24, padding: 4, width: '92%' },
   segmentItem: {
+    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
-    paddingHorizontal: 12,
+    justifyContent: 'center',
+    gap: 4,
+    paddingHorizontal: 6,
     paddingVertical: 10,
     borderRadius: 20,
   },
   segmentActive: { backgroundColor: colors.white },
-  segmentText: { color: colors.white, fontSize: 13, fontWeight: '600' },
+  segmentText: { flexShrink: 1, color: colors.white, fontSize: 13, fontWeight: '600' },
   segmentTextActive: { color: colors.text },
   busy: {
     ...StyleSheet.absoluteFillObject,

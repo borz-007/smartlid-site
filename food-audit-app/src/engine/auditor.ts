@@ -30,7 +30,7 @@ import { auditImageWithAI, auditTextWithAI, findProductOnWeb, type AiAudit, type
 import { computeNutriScore } from '../services/nutriScore';
 import { analyzeNutrientFactors } from '../services/nutrientFactors';
 import { HttpError, userMessage } from '../services/http';
-import { fetchProductByBarcode, ProductNotFoundError } from '../services/openFoodFacts';
+import { fetchProductByBarcode, hasValidGtinChecksum, ProductNotFoundError } from '../services/openFoodFacts';
 import { analyzeLocal, computeVerdict, hasActiveDiet, type LocalResult } from './localFilter';
 import { normalizePlain } from './textNormalize';
 
@@ -196,6 +196,12 @@ export async function auditBarcode(barcode: string, profile: UserProfile, onStag
     if (!(e instanceof ProductNotFoundError)) throw e;
   }
   if (offRaw && offRaw.text.trim()) return auditRawIngredients(offRaw, profile, 'openfoodfacts', onStage);
+
+  // Неверная контрольная цифра = код считан с ошибкой: не тратим запрос Gemini на поиск несуществующего товара
+  if (!hasValidGtinChecksum(barcode)) {
+    if (offRaw) return auditRawIngredients(offRaw, profile, 'openfoodfacts', onStage);
+    throw new ProductNotFoundError(barcode, 'Код, похоже, считан с ошибкой (не сходится контрольная цифра). Наведите камеру ещё раз.');
+  }
 
   if (!isAIConfigured()) {
     if (offRaw) return auditRawIngredients(offRaw, profile, 'openfoodfacts', onStage);
