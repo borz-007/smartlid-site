@@ -2,12 +2,14 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import type { HistoryEntry, ScanResult } from '../types';
 
 const KEY = '@food_audit/history_v1';
-const MAX = 200;
+/** Хранится только несколько последних проверок, чтобы не раздувать хранилище и не тормозить запуск. */
+export const HISTORY_MAX = 8;
 
 export async function loadHistory(): Promise<HistoryEntry[]> {
   try {
     const json = await AsyncStorage.getItem(KEY);
-    return json ? JSON.parse(json) : [];
+    const list: HistoryEntry[] = json ? JSON.parse(json) : [];
+    return list.slice(0, HISTORY_MAX);
   } catch {
     return [];
   }
@@ -27,9 +29,9 @@ export async function addToHistory(result: ScanResult): Promise<void> {
       ingredientsSource: result.ingredientsSource,
       result,
     };
-    list.unshift(entry);
-    if (list.length > MAX) list.length = MAX;
-    await AsyncStorage.setItem(KEY, JSON.stringify(list));
+    const barcode = entry.barcode;
+    const rest = barcode ? list.filter((e) => e.barcode !== barcode) : list;
+    await AsyncStorage.setItem(KEY, JSON.stringify([entry, ...rest].slice(0, HISTORY_MAX)));
   } catch (e) {
     console.warn('History save failed', e);
   }

@@ -29,6 +29,8 @@ interface Props {
   profile?: UserProfile;
   expiry?: ExpiryResult | null;
   onSelectAlternative?: (barcode: string) => void;
+  /** false — просмотр уже сохранённого результата (из истории): не писать его в историю и кэш повторно. */
+  saveToHistory?: boolean;
 }
 
 function IssueCard({ issue, categoryLabels, sourceLabels }: { issue: Issue; categoryLabels: Record<IssueCategory, string>; sourceLabels: Record<Issue['source'], string> }) {
@@ -59,7 +61,7 @@ function toSavedProduct(result: ScanResult): SavedProduct {
   };
 }
 
-export function ResultModal({ result, onClose, profile, expiry, onSelectAlternative }: Props) {
+export function ResultModal({ result, onClose, profile, expiry, onSelectAlternative, saveToHistory = true }: Props) {
   const { t } = useI18n();
   const [fav, setFav] = useState(false);
   const [bl, setBl] = useState(false);
@@ -90,9 +92,9 @@ export function ResultModal({ result, onClose, profile, expiry, onSelectAlternat
 
   useEffect(() => {
     if (!result) return;
-    addToHistory(result);
-    if (result.product?.barcode) {
-      setCachedResult(result.product.barcode, result);
+    if (saveToHistory) {
+      addToHistory(result);
+      if (result.product?.barcode) setCachedResult(result.product.barcode, result);
     }
     const bc = result.product?.barcode;
     const nm = result.product?.name;

@@ -2,7 +2,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import type { ScanResult } from '../types';
 
 const KEY = '@food_audit/cache_v1';
-const MAX_ENTRIES = 300;
+export const CACHE_MAX_ENTRIES = 8;
 const TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
 
 interface CacheEntry {
@@ -41,9 +41,9 @@ export async function setCachedResult(barcode: string, result: ScanResult): Prom
   const map = await loadMap();
   map[barcode] = { result, ts: Date.now() };
   const keys = Object.keys(map);
-  if (keys.length > MAX_ENTRIES) {
+  if (keys.length > CACHE_MAX_ENTRIES) {
     const sorted = keys.sort((a, b) => (map[a].ts ?? 0) - (map[b].ts ?? 0));
-    for (let i = 0; i < sorted.length - MAX_ENTRIES; i++) delete map[sorted[i]];
+    for (let i = 0; i < sorted.length - CACHE_MAX_ENTRIES; i++) delete map[sorted[i]];
   }
   await saveMap(map);
 }

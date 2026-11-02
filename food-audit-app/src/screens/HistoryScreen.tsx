@@ -99,7 +99,7 @@ export function HistoryScreen({ onBack }: Props) {
         />
       )}
 
-      <ResultModal key={resultId} result={selected} onClose={() => setSelected(null)} />
+      <ResultModal key={resultId} result={selected} onClose={() => setSelected(null)} saveToHistory={false} />
     </SafeAreaView>
   );
 }
