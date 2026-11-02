@@ -1,3 +1,5 @@
+import { config } from '../constants/config';
+
 export class HttpError extends Error {
   constructor(message: string, public status?: number, public retryAfterSec?: number) {
     super(message);
@@ -33,8 +35,25 @@ function quotaInfo(body: any): { kind: 'day' | 'minute' | 'unknown'; retryAfterS
   return { kind, retryAfterSec };
 }
 
-/** Безопасное сообщение по HTTP-статусу Gemini: без сырого текста ответа сервера. */
-export function geminiHttpError(status: number, body?: unknown): HttpError {
+/** Подробности ответа Google для отладки: статус и сообщение, ключ вырезан, длина ограничена. */
+function debugDetail(status: number, body: any, model?: string): string {
+  const key = config.geminiApiKey;
+  let msg = String(body?.error?.message ?? '');
+  if (key) msg = msg.split(key).join('[ключ]');
+  msg = msg.replace(/AIza[0-9A-Za-z_-]{20,}/g, '[ключ]').slice(0, 300);
+  const code = typeof body?.error?.status === 'string' && /^[A-Z_]{3,40}$/.test(body.error.status) ? ` ${body.error.status}` : '';
+  return `\n[HTTP ${status}${code}${model ? `, модель ${model}` : ''}] ${msg}`.trimEnd();
+}
+
+/** Безопасное сообщение по HTTP-статусу Gemini; сырой текст ответа добавляется только в режиме отладки. */
+export function geminiHttpError(status: number, body?: unknown, model?: string): HttpError {
+  const err = baseGeminiError(status, body);
+  if (config.debugErrors) err.message += debugDetail(status, body, model);
+  else if (!/HTTP \d+/.test(err.message)) err.message += ` (HTTP ${status})`;
+  return err;
+}
+
+function baseGeminiError(status: number, body?: unknown): HttpError {
   let message: string;
   if (status === 429) {
     const { kind, retryAfterSec } = quotaInfo(body);

@@ -11,6 +11,7 @@ import { useI18n } from '../i18n';
 import { ProductNotFoundError } from '../services/openFoodFacts';
 import { scanExpiryDate } from '../services/expiryScanner';
 import { HttpError, userMessage } from '../services/http';
+import { prepareImageForAi } from '../services/image';
 import type { ExpiryResult, ScanResult } from '../types';
 
 type Mode = 'barcode' | 'photo' | 'expiry';
@@ -80,9 +81,9 @@ export function ScannerScreen({ initialMode = 'barcode', onOpenSettings, onBack 
     setBusy(true);
     setBusyText(t('recognizing'));
     try {
-      const photo = await cameraRef.current.takePictureAsync({ base64: true, quality: 0.6, skipProcessing: false });
-      if (!photo?.base64) throw new HttpError(t('no_photo'));
-      showResult(await auditPhoto(photo.base64, profile));
+      const photo = await cameraRef.current.takePictureAsync({ quality: 0.8, skipProcessing: false });
+      if (!photo?.uri) throw new HttpError(t('no_photo'));
+      showResult(await auditPhoto(await prepareImageForAi(photo), profile));
     } catch (e) {
       fail(t('photo_error'), userMessage(e, t('photo_error_hint')));
     } finally {
@@ -95,9 +96,9 @@ export function ScannerScreen({ initialMode = 'barcode', onOpenSettings, onBack 
     setBusy(true);
     setBusyText(t('recognizing'));
     try {
-      const photo = await cameraRef.current.takePictureAsync({ base64: true, quality: 0.7, skipProcessing: false });
-      if (!photo?.base64) throw new HttpError(t('no_photo'));
-      const expiryResult = await scanExpiryDate(photo.base64);
+      const photo = await cameraRef.current.takePictureAsync({ quality: 0.8, skipProcessing: false });
+      if (!photo?.uri) throw new HttpError(t('no_photo'));
+      const expiryResult = await scanExpiryDate(await prepareImageForAi(photo));
       if (!expiryResult.date) {
         fail(t('expiry_title'), t('photo_error_hint'));
       } else {

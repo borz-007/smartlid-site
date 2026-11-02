@@ -114,19 +114,46 @@ function buildRequestBody(parts: object[]) {
   };
 }
 
-/** Низкоуровневый вызов generateContent (напрямую или через прокси). */
+const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
+const isServerError = (e: unknown) => e instanceof HttpError && e.status !== undefined && e.status >= 500;
+
+/** Вызов generateContent с повтором при 5xx; затем (если задана) запасная модель при 5xx/404. */
 export async function postGenerate(body: object): Promise<any> {
+  const models = [config.geminiModel];
+  if (config.geminiFallbackModel && config.geminiFallbackModel !== config.geminiModel) models.push(config.geminiFallbackModel);
+
+  let lastError: unknown;
+  for (const model of models) {
+    try {
+      for (let attempt = 0; ; attempt++) {
+        try {
+          return await postGenerateOnce(model, body);
+        } catch (e) {
+          if (!isServerError(e) || attempt >= config.retryDelaysMs.length) throw e;
+          await sleep(config.retryDelaysMs[attempt]);
+        }
+      }
+    } catch (e) {
+      lastError = e;
+      if (!(isServerError(e) || (e instanceof HttpError && e.status === 404))) throw e;
+    }
+  }
+  throw lastError;
+}
+
+/** Один запрос generateContent (напрямую или через прокси). */
+async function postGenerateOnce(model: string, body: object): Promise<any> {
   let res: Response;
   if (config.aiProxyUrl) {
     res = await fetchWithTimeout(
       config.aiProxyUrl,
-      { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ model: config.geminiModel, body }) },
+      { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ model, body }) },
       config.requestTimeoutMs,
     );
   } else {
     if (!config.geminiApiKey) throw new HttpError('Ключ Gemini не задан (EXPO_PUBLIC_GEMINI_API_KEY)');
     // Ключ передаётся заголовком, а не в URL: так он не попадает в строки адресов, логи и тексты ошибок.
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(config.geminiModel)}:generateContent`;
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`;
     res = await fetchWithTimeout(
       url,
       {
@@ -139,7 +166,7 @@ export async function postGenerate(body: object): Promise<any> {
   }
 
   const json: any = await res.json().catch(() => ({}));
-  if (!res.ok) throw geminiHttpError(res.status, json);
+  if (!res.ok) throw geminiHttpError(res.status, json, model);
   if (json?.promptFeedback?.blockReason) {
     throw new HttpError(`Gemini заблокировал запрос: ${json.promptFeedback.blockReason}`);
   }

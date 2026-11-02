@@ -1,6 +1,7 @@
 const FAKE_KEY = 'AIzaFAKE-test-key-0123456789abcdefghijk';
 process.env.EXPO_PUBLIC_GEMINI_API_KEY = FAKE_KEY;
 
+import { config } from '../src/constants/config';
 import { findProductOnWeb, postGenerate, resetWebSearchCooldown } from '../src/services/gemini';
 import { hasValidGtinChecksum } from '../src/services/openFoodFacts';
 import { fetchWithTimeout, geminiHttpError, HttpError, userMessage } from '../src/services/http';
@@ -105,5 +106,61 @@ describe('контрольная цифра штрихкода', () => {
     expect(hasValidGtinChecksum('5449000000997')).toBe(false);
     expect(hasValidGtinChecksum('12345')).toBe(false);
     expect(hasValidGtinChecksum('abc')).toBe(false);
+  });
+});
+
+describe('ответы 5xx: повторы, запасная модель, отладочные подробности', () => {
+  let f: jest.Mock;
+  const original = { ...config };
+
+  beforeEach(() => {
+    f = jest.fn();
+    (global as any).fetch = f;
+    config.retryDelaysMs = [0, 0];
+    config.geminiFallbackModel = '';
+    config.debugErrors = false;
+  });
+  afterAll(() => Object.assign(config, original));
+
+  const modelOf = (call: unknown[]) => String(call[0]).match(/models\/([^:]+):/)?.[1];
+
+  it('повторяет запрос при 503 и возвращает успешный ответ', async () => {
+    f.mockReturnValueOnce(respond(503, { error: { status: 'UNAVAILABLE' } })).mockReturnValueOnce(respond(200, { candidates: [] }));
+    await expect(postGenerate({})).resolves.toEqual({ candidates: [] });
+    expect(f).toHaveBeenCalledTimes(2);
+  });
+
+  it('после исчерпания повторов пробует запасную модель', async () => {
+    config.geminiFallbackModel = 'fallback-model';
+    f.mockReturnValue(respond(503, {}));
+    f.mockReturnValueOnce(respond(503, {})).mockReturnValueOnce(respond(503, {})).mockReturnValueOnce(respond(503, {}));
+    f.mockReturnValueOnce(respond(200, { candidates: ['ok'] }));
+    await expect(postGenerate({})).resolves.toEqual({ candidates: ['ok'] });
+    expect(f).toHaveBeenCalledTimes(4);
+    expect(modelOf(f.mock.calls[3])).toBe('fallback-model');
+    expect(modelOf(f.mock.calls[0])).toBe(config.geminiModel);
+  });
+
+  it('4xx (кроме 404) не повторяются', async () => {
+    f.mockReturnValue(respond(403, {}));
+    await expect(postGenerate({})).rejects.toMatchObject({ status: 403 });
+    expect(f).toHaveBeenCalledTimes(1);
+  });
+
+  it('в обычном режиме в сообщении только код, без текста Google', async () => {
+    f.mockReturnValue(respond(503, { error: { status: 'UNAVAILABLE', message: `overloaded ${FAKE_KEY}` } }));
+    const err = await postGenerate({}).catch((e) => e);
+    expect(err.message).toMatch(/\(HTTP 503\)/);
+    expect(err.message).not.toMatch(/overloaded|UNAVAILABLE|AIza/);
+  });
+
+  it('в режиме отладки показывает статус и сообщение Google, но вырезает ключ', async () => {
+    config.debugErrors = true;
+    f.mockReturnValue(respond(503, { error: { status: 'UNAVAILABLE', message: `The model is overloaded ${FAKE_KEY}` } }));
+    const err = await postGenerate({}).catch((e) => e);
+    expect(err.message).toMatch(/HTTP 503 UNAVAILABLE/);
+    expect(err.message).toMatch(/The model is overloaded/);
+    expect(err.message).not.toContain(FAKE_KEY);
+    expect(err.message).toContain('[ключ]');
   });
 });

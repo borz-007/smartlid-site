@@ -19,6 +19,10 @@ jobs:
       # Необязательно: добавьте секрет в Settings → Secrets and variables → Actions.
       # Без него приложение работает с локальным фильтром, режим «Фото» недоступен.
       EXPO_PUBLIC_GEMINI_API_KEY: ${{ secrets.EXPO_PUBLIC_GEMINI_API_KEY }}
+      # ВРЕМЕННО (отладка ошибок ИИ): убрать перед публичным релизом.
+      EXPO_PUBLIC_DEBUG_AI_ERRORS: '1'
+      # Запасная модель при 5xx/404 основной; название не проверено по живому API — сверить в AI Studio.
+      EXPO_PUBLIC_GEMINI_FALLBACK_MODEL: gemini-2.5-flash
     steps:
       - uses: actions/checkout@v4
 
