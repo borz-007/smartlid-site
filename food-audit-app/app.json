@@ -5,11 +5,15 @@
     "version": "1.0.0",
     "orientation": "portrait",
     "userInterfaceStyle": "light",
+    "jsEngine": "hermes",
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "com.foodaudit.app",
       "infoPlist": {
-        "NSCameraUsageDescription": "Камера нужна для сканирования штрихкодов и фотографирования состава продукта."
+        "NSCameraUsageDescription": "Камера нужна для сканирования штрихкодов и фотографирования состава продукта.",
+        "NSAppTransportSecurity": {
+          "NSAllowsArbitraryLoads": false
+        }
       }
     },
     "android": {
@@ -23,6 +27,14 @@
         "expo-camera",
         {
           "cameraPermission": "Камера нужна для сканирования штрихкодов и фотографирования состава продукта."
+        }
+      ],
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "usesCleartextTraffic": false
+          }
         }
       ],
       "expo-asset",

@@ -8,7 +8,7 @@
 import { ALLERGENS } from '../constants/allergens';
 import { config } from '../constants/config';
 import type { AllergenId, Severity, UserProfile } from '../types';
-import { fetchWithTimeout, HttpError } from './http';
+import { fetchWithTimeout, geminiHttpError, HttpError } from './http';
 
 export interface AiIssue {
   original: string;
@@ -115,7 +115,7 @@ function buildRequestBody(parts: object[]) {
 }
 
 /** Низкоуровневый вызов generateContent (напрямую или через прокси). */
-async function postGenerate(body: object): Promise<any> {
+export async function postGenerate(body: object): Promise<any> {
   let res: Response;
   if (config.aiProxyUrl) {
     res = await fetchWithTimeout(
@@ -125,20 +125,21 @@ async function postGenerate(body: object): Promise<any> {
     );
   } else {
     if (!config.geminiApiKey) throw new HttpError('Ключ Gemini не задан (EXPO_PUBLIC_GEMINI_API_KEY)');
-    const url =
-      `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(config.geminiModel)}` +
-      `:generateContent?key=${encodeURIComponent(config.geminiApiKey)}`;
+    // Ключ передаётся заголовком, а не в URL: так он не попадает в строки адресов, логи и тексты ошибок.
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(config.geminiModel)}:generateContent`;
     res = await fetchWithTimeout(
       url,
-      { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) },
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-goog-api-key': config.geminiApiKey },
+        body: JSON.stringify(body),
+      },
       config.requestTimeoutMs,
     );
   }
 
   const json: any = await res.json().catch(() => ({}));
-  if (!res.ok) {
-    throw new HttpError(`Gemini: ${json?.error?.message ?? `HTTP ${res.status}`}`, res.status);
-  }
+  if (!res.ok) throw geminiHttpError(res.status);
   if (json?.promptFeedback?.blockReason) {
     throw new HttpError(`Gemini заблокировал запрос: ${json.promptFeedback.blockReason}`);
   }

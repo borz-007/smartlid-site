@@ -2,7 +2,20 @@ node_modules/
 .expo/
 dist/
 web-build/
-.env
 *.log
 ios/
 android/
+
+# Секреты: переменные окружения (шаблон .env.example остаётся в репозитории)
+.env
+.env.*
+!.env.example
+
+# Секреты: ключи подписи и сертификаты
+*.keystore
+*.jks
+*.p12
+*.p8
+*.pem
+*.key
+*.mobileprovision

@@ -29,6 +29,7 @@ import { analyzeAdditives } from '../services/additives';
 import { auditImageWithAI, auditTextWithAI, findProductOnWeb, type AiAudit, type AiIssue } from '../services/gemini';
 import { computeNutriScore } from '../services/nutriScore';
 import { analyzeNutrientFactors } from '../services/nutrientFactors';
+import { HttpError, userMessage } from '../services/http';
 import { fetchProductByBarcode, ProductNotFoundError } from '../services/openFoodFacts';
 import { analyzeLocal, computeVerdict, hasActiveDiet, type LocalResult } from './localFilter';
 import { normalizePlain } from './textNormalize';
@@ -143,8 +144,8 @@ function buildResult(
 async function tryAI<T>(fn: () => Promise<T>, notes: string[]): Promise<T | null> {
   try {
     return await fn();
-  } catch (e: any) {
-    notes.push(`ИИ недоступен: ${e?.message ?? 'неизвестная ошибка'}`);
+  } catch (e) {
+    notes.push(`ИИ недоступен: ${userMessage(e, 'неизвестная ошибка')}`);
     return null;
   }
 }
@@ -205,9 +206,9 @@ export async function auditBarcode(barcode: string, profile: UserProfile, onStag
   let web;
   try {
     web = await findProductOnWeb(barcode);
-  } catch (e: any) {
+  } catch (e) {
     if (offRaw) return auditRawIngredients(offRaw, profile, 'openfoodfacts', onStage);
-    throw new ProductNotFoundError(barcode, `Поиск в интернете не удался: ${e?.message ?? 'ошибка'}`);
+    throw new ProductNotFoundError(barcode, `Поиск в интернете не удался: ${userMessage(e, 'ошибка')}`);
   }
   if (!web.found) {
     if (offRaw) return auditRawIngredients(offRaw, profile, 'openfoodfacts', onStage);
@@ -234,11 +235,11 @@ export async function auditBarcode(barcode: string, profile: UserProfile, onStag
 /** Путь Б: фото этикетки. Распознавание выполняет мультимодальная модель. */
 export async function auditPhoto(imageBase64: string, profile: UserProfile): Promise<ScanResult> {
   if (!isAIConfigured()) {
-    throw new Error('Для режима «Фото состава» нужен ключ Gemini (EXPO_PUBLIC_GEMINI_API_KEY).');
+    throw new HttpError('Для режима «Фото состава» нужен ключ Gemini (EXPO_PUBLIC_GEMINI_API_KEY).');
   }
   const notes: string[] = [];
   const ai = await tryAI(() => auditImageWithAI(imageBase64, profile), notes);
-  if (!ai) throw new Error(notes[0] ?? 'Не удалось распознать этикетку');
+  if (!ai) throw new HttpError(notes[0] ?? 'Не удалось распознать этикетку');
 
   const raw: RawIngredients = { text: ai.ingredients_text ?? '' };
   // Распознанный текст дополнительно проходит детерминированный фильтр

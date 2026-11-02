@@ -10,6 +10,7 @@ import { auditBarcode, auditPhoto } from '../engine/auditor';
 import { useI18n } from '../i18n';
 import { ProductNotFoundError } from '../services/openFoodFacts';
 import { scanExpiryDate } from '../services/expiryScanner';
+import { HttpError, userMessage } from '../services/http';
 import type { ExpiryResult, ScanResult } from '../types';
 
 type Mode = 'barcode' | 'photo' | 'expiry';
@@ -65,7 +66,7 @@ export function ScannerScreen({ initialMode = 'barcode', onOpenSettings, onBack 
             true,
           );
         } else {
-          fail(t('error'), e?.message ?? t('error_check'));
+          fail(t('error'), userMessage(e, t('error_check')));
         }
       } finally {
         setBusy(false);
@@ -80,10 +81,10 @@ export function ScannerScreen({ initialMode = 'barcode', onOpenSettings, onBack 
     setBusyText(t('recognizing'));
     try {
       const photo = await cameraRef.current.takePictureAsync({ base64: true, quality: 0.6, skipProcessing: false });
-      if (!photo?.base64) throw new Error(t('no_photo'));
+      if (!photo?.base64) throw new HttpError(t('no_photo'));
       showResult(await auditPhoto(photo.base64, profile));
-    } catch (e: any) {
-      fail(t('photo_error'), e?.message ?? t('photo_error_hint'));
+    } catch (e) {
+      fail(t('photo_error'), userMessage(e, t('photo_error_hint')));
     } finally {
       setBusy(false);
     }
@@ -95,7 +96,7 @@ export function ScannerScreen({ initialMode = 'barcode', onOpenSettings, onBack 
     setBusyText(t('recognizing'));
     try {
       const photo = await cameraRef.current.takePictureAsync({ base64: true, quality: 0.7, skipProcessing: false });
-      if (!photo?.base64) throw new Error(t('no_photo'));
+      if (!photo?.base64) throw new HttpError(t('no_photo'));
       const expiryResult = await scanExpiryDate(photo.base64);
       if (!expiryResult.date) {
         fail(t('expiry_title'), t('photo_error_hint'));
@@ -112,8 +113,8 @@ export function ScannerScreen({ initialMode = 'barcode', onOpenSettings, onBack 
           [{ text: t('ok') }],
         );
       }
-    } catch (e: any) {
-      fail(t('photo_error'), e?.message ?? t('photo_error_hint'));
+    } catch (e) {
+      fail(t('photo_error'), userMessage(e, t('photo_error_hint')));
     } finally {
       setBusy(false);
     }

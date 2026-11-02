@@ -20,6 +20,7 @@ import { useTheme } from '../context/ThemeContext';
 import { auditBarcode } from '../engine/auditor';
 import { useI18n } from '../i18n';
 import { getCachedResult } from '../storage/cacheStorage';
+import { userMessage } from '../services/http';
 import { isValidBarcode, searchProductsByName, type SearchResult } from '../services/openFoodFacts';
 import type { ScanResult } from '../types';
 
@@ -89,8 +90,8 @@ export function HomeScreen({
       const r = await auditBarcode(code, profile, setBusyText);
       setResult(r);
       setResultId((n) => n + 1);
-    } catch (e: any) {
-      Alert.alert(t('error'), e?.message ?? t('error_check'));
+    } catch (e) {
+      Alert.alert(t('error'), userMessage(e, t('error_check')));
     } finally {
       setBusy(false);
     }
@@ -110,8 +111,8 @@ export function HomeScreen({
       const r = await auditBarcode(item.barcode, profile, setBusyText);
       setResult(r);
       setResultId((n) => n + 1);
-    } catch (e: any) {
-      Alert.alert(t('error'), e?.message ?? t('error_check'));
+    } catch (e) {
+      Alert.alert(t('error'), userMessage(e, t('error_check')));
     } finally {
       setBusy(false);
     }

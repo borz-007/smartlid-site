@@ -1,6 +1,6 @@
-import { config } from '../constants/config';
 import type { ExpiryResult } from '../types';
-import { fetchWithTimeout, HttpError } from './http';
+import { postGenerate } from './gemini';
+import { HttpError } from './http';
 
 const SYSTEM_PROMPT = `You are an OCR expert specializing in reading expiry dates from food packaging.
 Find the expiry/best-before date on the image. Look for labels like:
@@ -42,12 +42,7 @@ function computeDaysRemaining(dateStr: string): { days: number; status: ExpiryRe
   return { days: diff, status };
 }
 
-export async function scanExpiryDate(base64Image: string, apiKey?: string): Promise<ExpiryResult> {
-  const key = apiKey || config.geminiApiKey;
-  if (!key && !config.aiProxyUrl) {
-    throw new HttpError('Ключ Gemini не задан');
-  }
-
+export async function scanExpiryDate(base64Image: string): Promise<ExpiryResult> {
   const body = {
     systemInstruction: { parts: [{ text: SYSTEM_PROMPT }] },
     contents: [{
@@ -60,26 +55,7 @@ export async function scanExpiryDate(base64Image: string, apiKey?: string): Prom
     generationConfig: { temperature: 0, responseMimeType: 'application/json' },
   };
 
-  let res: Response;
-  if (config.aiProxyUrl) {
-    res = await fetchWithTimeout(
-      config.aiProxyUrl,
-      { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ model: config.geminiModel, body }) },
-      config.requestTimeoutMs,
-    );
-  } else {
-    const url =
-      `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(config.geminiModel)}` +
-      `:generateContent?key=${encodeURIComponent(key)}`;
-    res = await fetchWithTimeout(
-      url,
-      { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) },
-      config.requestTimeoutMs,
-    );
-  }
-
-  const json: any = await res.json().catch(() => ({}));
-  if (!res.ok) throw new HttpError(`Gemini: ${json?.error?.message ?? `HTTP ${res.status}`}`, res.status);
+  const json = await postGenerate(body);
 
   const text = (json?.candidates?.[0]?.content?.parts ?? []).map((p: { text?: string }) => p.text ?? '').join('');
   let data: GeminiExpiryResponse;
