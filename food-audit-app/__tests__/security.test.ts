@@ -9,6 +9,12 @@ import { fetchWithTimeout, geminiHttpError, HttpError, userMessage } from '../sr
 const respond = (status: number, body: unknown) =>
   Promise.resolve({ ok: status < 400, status, json: () => Promise.resolve(body) } as Response);
 
+// CI собирает APK с EXPO_PUBLIC_DEBUG_AI_ERRORS=1 и запасной моделью: тесты не должны от этого зависеть
+beforeEach(() => {
+  config.debugErrors = false;
+  config.geminiFallbackModel = '';
+});
+
 describe('безопасность сетевого слоя', () => {
   let fetchMock: jest.Mock;
 
