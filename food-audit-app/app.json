@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "SAFA",
+    "name": "Safa: Halal & Food Scanner",
     "slug": "food-audit-app",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -14,7 +14,8 @@
         "NSCameraUsageDescription": "Камера нужна для сканирования штрихкодов и фотографирования состава продукта.",
         "NSAppTransportSecurity": {
           "NSAllowsArbitraryLoads": false
-        }
+        },
+        "CFBundleDisplayName": "Safa"
       }
     },
     "android": {
@@ -37,6 +38,10 @@
             "usesCleartextTraffic": false
           }
         }
+      ],
+      [
+        "./plugins/withAndroidAppLabel",
+        "Safa"
       ],
       "expo-asset",
       "expo-font"
