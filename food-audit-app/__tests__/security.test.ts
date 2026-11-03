@@ -1,4 +1,5 @@
-const FAKE_KEY = 'AIzaFAKE-test-key-0123456789abcdefghijk';
+// Фиктивный ключ собирается из частей, чтобы в исходниках не было строки, похожей на настоящий ключ Google
+const FAKE_KEY = ['AI', 'zaFAKE-test-key-0123456789abcdefghijk'].join('');
 process.env.EXPO_PUBLIC_GEMINI_API_KEY = FAKE_KEY;
 
 import { config } from '../src/constants/config';

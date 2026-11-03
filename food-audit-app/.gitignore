@@ -10,6 +10,8 @@ android/
 .env
 .env.*
 !.env.example
+credentials.json
+*credentials.json*
 
 # Секреты: ключи подписи и сертификаты
 *.keystore
