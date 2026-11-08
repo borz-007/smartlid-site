@@ -2,6 +2,11 @@ name: Food Audit APK
 
 on:
   workflow_dispatch:
+    inputs:
+      api_base_url:
+        description: 'Адрес API SAFA для этой сборки (https://домен, без слэша). Если пусто — берётся переменная репозитория API_BASE_URL.'
+        required: false
+        default: ''
   push:
     paths:
       - 'food-audit-app/**'
@@ -18,7 +23,7 @@ jobs:
       CI: '1'
       # Публичный адрес нашего API на Vercel (не секрет): Settings -> Secrets and variables -> Actions -> Variables -> API_BASE_URL.
       # Ключ ИИ в приложение не попадает: он хранится только на сервере (Vercel -> Environment Variables).
-      EXPO_PUBLIC_API_BASE_URL: ${{ vars.API_BASE_URL }}
+      EXPO_PUBLIC_API_BASE_URL: ${{ inputs.api_base_url || vars.API_BASE_URL }}
     steps:
       - uses: actions/checkout@v4
 
@@ -38,7 +43,10 @@ jobs:
       - name: Check API URL
         run: |
           if [ -z "$EXPO_PUBLIC_API_BASE_URL" ]; then
-            echo "::warning title=API URL missing::Repository variable API_BASE_URL is not set. APK will work without AI (no web search, photo mode, community)."
+            echo "::warning title=API URL missing::API_BASE_URL is not set (neither the run input nor the repository variable). APK will work without AI (no web search, photo mode, community)."
+          elif ! printf '%s' "$EXPO_PUBLIC_API_BASE_URL" | grep -Eq '^https://[A-Za-z0-9.-]+(:[0-9]{1,5})?$'; then
+            echo "::error title=API URL is malformed::API_BASE_URL must look like https://your-domain.vercel.app (no slash, no spaces, no Markdown brackets). Got: [$EXPO_PUBLIC_API_BASE_URL]"
+            exit 1
           else
             echo "API base URL: $EXPO_PUBLIC_API_BASE_URL"
           fi
