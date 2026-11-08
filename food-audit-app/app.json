@@ -22,6 +22,9 @@
       "package": "com.foodaudit.app",
       "permissions": [
         "android.permission.CAMERA"
+      ],
+      "blockedPermissions": [
+        "android.permission.RECORD_AUDIO"
       ]
     },
     "plugins": [
@@ -29,6 +32,13 @@
         "expo-camera",
         {
           "cameraPermission": "Камера нужна для сканирования штрихкодов и фотографирования состава продукта."
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Доступ к фото нужен, чтобы приложить снимок к отчёту о продукте.",
+          "cameraPermission": "Камера нужна, чтобы сфотографировать упаковку для отчёта о продукте."
         }
       ],
       [

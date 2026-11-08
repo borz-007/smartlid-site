@@ -8,7 +8,7 @@ Full description — 4000 символов.
 | --- | --- | --- | --- |
 | Title | 26 | 26 | 30 |
 | Short description | 73 | 68 | 80 |
-| Full description | 2434 | 2560 | 4000 |
+| Full description | 2552 | 2685 | 4000 |
 
 Название на домашнем экране телефона — **Safa** (отдельно от Title в магазине, см. `plugins/withAndroidAppLabel.js`).
 
@@ -78,7 +78,7 @@ FOR THE WHOLE FAMILY
 GOOD TO KNOW
 • Product data comes from Open Food Facts, a community database that can be incomplete or out of date. Always compare with the package.
 • Safa is not a halal certification body and does not give medical advice. If you have a severe allergy, always read the label and follow your doctor's advice.
-• AI features send ingredient text, photos and your diet settings to Google's Gemini API. Barcodes are sent to Open Food Facts.
+• AI features send ingredient text, photos and your diet settings to the SAFA server, which forwards them to Google's Gemini API. Barcodes go to Open Food Facts. A photo you attach to a community report is sent to the SAFA server for moderation.
 ```
 
 ---
@@ -147,14 +147,14 @@ Safa — сканер халяль и состава продуктов: за с
 ВАЖНО ЗНАТЬ
 • Данные о продуктах берутся из Open Food Facts — открытой базы, которая может быть неполной или устаревшей. Всегда сверяйте с упаковкой.
 • Safa не является сертифицирующим органом по халяль и не даёт медицинских рекомендаций. При тяжёлой аллергии всегда читайте этикетку и следуйте советам врача.
-• ИИ-функции отправляют текст состава, фото и ваши настройки питания в API Google Gemini. Штрихкоды отправляются в Open Food Facts.
+• ИИ-функции отправляют текст состава, фото и ваши настройки питания на сервер SAFA, который передаёт их в API Google Gemini. Штрихкоды отправляются в Open Food Facts. Фото, которое вы прикладываете к отчёту сообщества, уходит на сервер SAFA для модерации.
 ```
 
 ---
 
 ## Заметки для публикации (не для вставки в магазин)
 
-- **Data safety (раздел «Безопасность данных»).** Приложение не требует аккаунта. При ИИ-функциях фото и текст состава уходят в Google Gemini API, штрихкоды — в Open Food Facts; профиль и история хранятся на устройстве (AsyncStorage). Заполняйте анкету по фактической сборке и пересмотрите её, если подключите прокси или аналитику.
+- **Data safety (раздел «Безопасность данных»).** Приложение не требует аккаунта. При ИИ-функциях фото и текст состава уходят на сервер SAFA (Vercel), а оттуда в Google Gemini API; штрихкоды — в Open Food Facts; в отчётах сообщества на сервер SAFA попадают фото, штрихкод и случайный анонимный идентификатор установки (хранится хеш); профиль и история остаются на устройстве (AsyncStorage). Заполняйте анкету по фактической сборке.
 - **Политика Google Play.** В Title и описаниях не должно быть эмодзи, цен, слов вроде «№1/лучший» и повторяющегося перечисления ключевых слов; в текстах выше этого нет.
 - **Ограничения утверждений.** Не пишите в магазине про «халяль-сертификацию» и медицинские эффекты: приложение не сертифицирует и не лечит. Список E-добавок во встроенном справочнике неполный (около 55 записей), поэтому в тексте сказано «распространённых добавок».
 - **Категория (предложение, не проверено).** Food & Drink; вариант — Health & Fitness.

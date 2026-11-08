@@ -8,13 +8,13 @@
 ```bash
 cd food-audit-app
 npm install
-cp .env.example .env        # вписать EXPO_PUBLIC_GEMINI_API_KEY
+cp .env.example .env        # вписать EXPO_PUBLIC_API_BASE_URL (публичный адрес сервера на Vercel)
 npx expo start              # открыть в Expo Go или dev-build
 npm test                    # тесты движка правил
 npm run typecheck
 ```
 
-Без ключа Gemini работает режим «Штрихкод» с локальным фильтром; режим «Фото состава» требует ключ.
+Без адреса сервера (EXPO_PUBLIC_API_BASE_URL) работает режим «Штрихкод» с локальным фильтром и Open Food Facts; ИИ, поиск в интернете, срок годности и отчёты сообщества требуют сервера.
 
 ## Архитектура
 
@@ -24,14 +24,16 @@ src/
   types/index.ts                Severity, UserProfile, Issue, ScanResult, RawIngredients
   constants/
     allergens.ts                14 аллергенов ЕС + соответствие тегам Open Food Facts
-    config.ts                   ключ/модель Gemini из EXPO_PUBLIC_*, таймауты, User-Agent для OFF
+    config.ts                   адрес нашего сервера (EXPO_PUBLIC_API_BASE_URL), таймауты, User-Agent для OFF
     theme.ts                    цвета и подписи вердиктов
   storage/profileStorage.ts     AsyncStorage: загрузка/сохранение, слияние с дефолтами
   context/ProfileContext.tsx    состояние профиля + автосохранение при каждом изменении
   services/
     http.ts                     fetch с таймаутом
     openFoodFacts.ts            Шаг 1А: GET /api/v2/product/{barcode}.json
-    gemini.ts                   Шаг 3: generateContent, JSON-схема ответа, валидация
+    gemini.ts                   Шаг 3: запросы к НАШЕМУ серверу (/api/ingredient-audit), валидация ответа
+    backend.ts                  единственная точка связи с сервером: HTTPS, понятные ошибки без стеков
+    community.ts                отчёты «не халяль / подтвердить халяль» и статус сообщества
   engine/
     textNormalize.ts            нижний регистр, снятие диакритики, карта индексов → цитата оригинала
     dictionaries.ts             правила стоп-компонентов на 4 языках, исключения, уточнители, следы
@@ -49,7 +51,7 @@ __tests__/localFilter.test.ts   22 теста на реальных формул
 ## Поток данных
 
 1. **Получение текста.** Штрихкод → Open Food Facts (`ingredients_text`, `allergens_tags`, `traces_tags`,
-   `ingredients_analysis_tags`, `labels_tags`). Фото → base64 → Gemini распознаёт и аудирует одним запросом.
+   `ingredients_analysis_tags`, `labels_tags`). Фото → сжатие на телефоне → наш сервер → Gemini распознаёт и аудирует одним запросом.
 2. **Локальный фильтр.** Текст нормализуется (`Gélatine` → `gelatine`, `Käse` → `kase`), затем к нему
    применяются правила из `dictionaries.ts`. У каждого правила есть:
    - `patterns` — словоформы на NL/FR/DE/EN и E-номера (`E 471`, `E-471`, `e471` — одинаково);
@@ -67,17 +69,20 @@ __tests__/localFilter.test.ts   22 теста на реальных формул
 - Локальный BANNED выдаётся мгновенно, токены ИИ не тратятся.
 - Итог = максимум(локальный, ИИ): ИИ может только **ужесточить** вердикт, но не снять запрет.
 - Ответ ИИ фильтруется по профилю: категорию, которую пользователь не включал, ИИ добавить не может.
-- Если проверка ИИ была нужна, но не удалась (нет ключа, нет сети, отключено) — минимум WARNING с пояснением.
+- Если проверка ИИ была нужна, но не удалась (нет сервера, нет сети, отключено) — минимум WARNING с пояснением.
 - Пустой состав никогда не даёт SAFE.
 
 ## Важные замечания
 
-- **Модель.** В ТЗ указана `gemini-1.5-flash`; Google снял модели 1.5 с обслуживания, поэтому по умолчанию
-  стоит `gemini-2.5-flash`. Модель задаётся через `EXPO_PUBLIC_GEMINI_MODEL` — проверьте актуальный список
-  моделей в документации Google AI перед релизом.
-- **Безопасность ключа.** `EXPO_PUBLIC_*` попадает в бандл. Для продакшена поднимите свой прокси и укажите
-  `EXPO_PUBLIC_AI_PROXY_URL`: приложение отправит `POST {model, body}`, прокси добавит ключ и перешлёт
-  `body` в `generateContent`.
+- **Ключ Gemini только на сервере.** Приложение не содержит ключей и SDK Google: все ИИ-запросы идут обычным
+  POST на `/api/ingredient-audit` нашего Next.js-сервера на Vercel, который читает `process.env.GEMINI_API_KEY`
+  (Vercel → Settings → Environment Variables). Шаблон переменных сервера — `.env.example` в корне репозитория.
+  Автотест (`__tests__/security.test.ts`) и шаг CI «Verify APK contains no Google API key» не дают ключу вернуться в клиент.
+- **Серверные маршруты** лежат в `app/api/` (корень репозитория), логика — в `lib/server/`, тесты — `yarn test:server`:
+  `ingredient-audit` (аудит текста/фото, срок годности, поиск товара), `community-report` / `community-status`
+  (краудсорсинг) и `admin/reports` (модерация, нужен `ADMIN_TOKEN`).
+- **Модель** задаётся на сервере переменными `GEMINI_MODEL` и `GEMINI_FALLBACK_MODEL`; проверьте актуальный список
+  моделей в документации Google AI перед релизом (модели 1.5 сняты с обслуживания).
 - **Ограничения.** Словари покрывают типичные формулировки, но не все. Приложение — вспомогательный
   инструмент; при тяжёлой аллергии сверяйтесь с упаковкой и производителем.
 - Для фото без ИИ можно добавить on-device OCR (например, ML Kit через dev-build) — распознанный текст

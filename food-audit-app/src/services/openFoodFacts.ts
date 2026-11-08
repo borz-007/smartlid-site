@@ -51,6 +51,7 @@ const FIELDS = [
   'nutriments',
   'additives_tags',
   'categories_tags',
+  'countries_tags',
 ].join(',');
 
 export class ProductNotFoundError extends Error {
@@ -80,6 +81,7 @@ interface OffProduct {
   nutriments?: Record<string, number>;
   additives_tags?: string[];
   categories_tags?: string[];
+  countries_tags?: string[];
 }
 
 export function isValidBarcode(code: string): boolean {
@@ -168,5 +170,6 @@ export async function fetchProductByBarcode(barcode: string): Promise<RawIngredi
     nutriments: parseNutriments(p.nutriments),
     additivesTags: p.additives_tags ?? [],
     categoriesTags: p.categories_tags ?? [],
+    countriesTags: p.countries_tags ?? [],
   };
 }

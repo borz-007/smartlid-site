@@ -15,6 +15,7 @@ import type {
   EcoScoreData,
   EcoScoreGrade,
   IngredientsSource,
+  CommunityStatus,
   Issue,
   IssueCategory,
   NutrientFactor,
@@ -26,7 +27,8 @@ import type {
 } from '../types';
 import { maxSeverity } from '../types';
 import { analyzeAdditives } from '../services/additives';
-import { auditImageWithAI, auditTextWithAI, findProductOnWeb, type AiAudit, type AiIssue } from '../services/gemini';
+import { fetchCommunityStatus } from '../services/community';
+import { auditImageWithAI, auditTextWithAI, findProductOnWeb, type AiAudit, type AiIssue, type AuditContext } from '../services/gemini';
 import { computeNutriScore } from '../services/nutriScore';
 import { analyzeNutrientFactors } from '../services/nutrientFactors';
 import { HttpError, userMessage } from '../services/http';
@@ -141,6 +143,51 @@ function buildResult(
   };
 }
 
+/** Страны, сертификаты и штрихкод — серверный промпт использует их для строгого правила халяль. */
+function aiContext(raw: RawIngredients, extraContext: string[] = []): AuditContext {
+  const labels = raw.labelTags;
+  return {
+    extraContext,
+    barcode: raw.product?.barcode,
+    countries: raw.countriesTags?.slice(0, 10),
+    certifications: labels ? { halal: labels.includes('en:halal'), vegan: labels.includes('en:vegan') } : undefined,
+  };
+}
+
+/**
+ * Накладывает на результат подтверждённый модератором статус сообщества.
+ * «Не халяль» только ужесточает вердикт; «халяль» вердикт не смягчает (только пометка).
+ */
+export function applyCommunity(result: ScanResult, community: CommunityStatus | null, profile: UserProfile): ScanResult {
+  if (!community || community.status === 'none') return result;
+  const out: ScanResult = { ...result, community, issues: [...result.issues], notes: [...result.notes] };
+  if (profile.halal && (community.status === 'haram' || community.status === 'disputed')) {
+    const banned = community.status === 'haram';
+    out.issues.push({
+      key: 'community:status',
+      original: 'SAFA',
+      translationRu: banned ? 'Сообщество: не халяль (подтверждено модератором)' : 'Сообщество: мнения о халяльности расходятся',
+      reasonRu: banned
+        ? 'Пользователи прислали фото-подтверждение, модератор его принял.'
+        : 'Есть подтверждённые отчёты и «халяль», и «не халяль» — проверьте упаковку.',
+      severity: banned ? 'BANNED' : 'WARNING',
+      categories: ['halal'],
+      isTrace: false,
+      source: 'community',
+    });
+    out.verdict = maxSeverity(out.verdict, banned ? 'BANNED' : 'WARNING');
+  }
+  return out;
+}
+
+/** Обновляет статус сообщества у уже готового результата (например, из кэша). */
+export async function withCommunity(result: ScanResult, profile: UserProfile): Promise<ScanResult> {
+  const barcode = result.product?.barcode;
+  if (!barcode) return result;
+  const base: ScanResult = { ...result, community: undefined, issues: result.issues.filter((i) => i.source !== 'community') };
+  return applyCommunity(base, await fetchCommunityStatus(barcode), profile);
+}
+
 async function tryAI<T>(fn: () => Promise<T>, notes: string[]): Promise<T | null> {
   try {
     return await fn();
@@ -178,7 +225,7 @@ export async function auditRawIngredients(
   }
 
   onStage?.('Gemini проверяет состав…');
-  const ai = await tryAI(() => auditTextWithAI(raw.text, profile, local.aiReasons), notes);
+  const ai = await tryAI(() => auditTextWithAI(raw.text, profile, aiContext(raw, local.aiReasons)), notes);
   return buildResult(raw, local, ai, profile, notes, source);
 }
 
@@ -187,7 +234,7 @@ export async function auditRawIngredients(
  * 1) Open Food Facts; 2) если товара нет или состав пуст — поиск в интернете через Gemini + Google Search;
  * 3) найденный состав проверяется локальным фильтром и Gemini.
  */
-export async function auditBarcode(barcode: string, profile: UserProfile, onStage?: StageCallback): Promise<ScanResult> {
+async function auditBarcodeCore(barcode: string, profile: UserProfile, onStage?: StageCallback): Promise<ScanResult> {
   onStage?.('Ищем товар в Open Food Facts…');
   let offRaw: RawIngredients | null = null;
   try {
@@ -205,13 +252,13 @@ export async function auditBarcode(barcode: string, profile: UserProfile, onStag
 
   if (!isAIConfigured()) {
     if (offRaw) return auditRawIngredients(offRaw, profile, 'openfoodfacts', onStage);
-    throw new ProductNotFoundError(barcode, 'Для поиска в интернете нужен ключ Gemini.');
+    throw new ProductNotFoundError(barcode, 'Поиск в интернете недоступен: приложение не подключено к серверу SAFA.');
   }
 
   onStage?.('Ищем состав в интернете…');
   let web;
   try {
-    web = await findProductOnWeb(barcode);
+    web = await findProductOnWeb(barcode, { brand: offRaw?.product?.brand, name: offRaw?.product?.name });
   } catch (e) {
     if (offRaw) return auditRawIngredients(offRaw, profile, 'openfoodfacts', onStage);
     throw new ProductNotFoundError(barcode, `Поиск в интернете не удался: ${userMessage(e, 'ошибка')}`);
@@ -233,15 +280,26 @@ export async function auditBarcode(barcode: string, profile: UserProfile, onStag
       sources: web.sources,
     },
   };
-  const result = await auditRawIngredients(raw, profile, 'web', onStage);
-  result.notes.unshift('Состав найден в интернете — обязательно сверьте его с упаковкой.');
+  const fromManufacturer = web.via === 'manufacturer';
+  const result = await auditRawIngredients(raw, profile, fromManufacturer ? 'manufacturer' : 'web', onStage);
+  result.notes.unshift(
+    fromManufacturer
+      ? 'Состав взят со страницы производителя — обязательно сверьте его с упаковкой.'
+      : 'Состав найден в интернете — обязательно сверьте его с упаковкой.',
+  );
   return result;
+}
+
+/** Путь А с учётом подтверждённого модератором статуса сообщества (параллельный запрос, при сбое игнорируется). */
+export async function auditBarcode(barcode: string, profile: UserProfile, onStage?: StageCallback): Promise<ScanResult> {
+  const [result, community] = await Promise.all([auditBarcodeCore(barcode, profile, onStage), fetchCommunityStatus(barcode)]);
+  return applyCommunity(result, community, profile);
 }
 
 /** Путь Б: фото этикетки. Распознавание выполняет мультимодальная модель. */
 export async function auditPhoto(imageBase64: string, profile: UserProfile): Promise<ScanResult> {
   if (!isAIConfigured()) {
-    throw new HttpError('Для режима «Фото состава» нужен ключ Gemini (EXPO_PUBLIC_GEMINI_API_KEY).');
+    throw new HttpError('Для режима «Фото состава» приложение должно быть подключено к серверу SAFA.');
   }
   const notes: string[] = [];
   const ai = await tryAI(() => auditImageWithAI(imageBase64, profile), notes);

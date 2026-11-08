@@ -41,7 +41,7 @@ export interface UserProfile {
 
 export type IssueCategory = DietKey | 'allergen' | 'custom' | 'other';
 
-export type IssueSource = 'local' | 'ai' | 'openfoodfacts';
+export type IssueSource = 'local' | 'ai' | 'openfoodfacts' | 'community';
 
 export interface Issue {
   /** Стабильный ключ для дедупликации. */
@@ -70,7 +70,7 @@ export interface ProductInfo {
 }
 
 /** Откуда взят текст состава. */
-export type IngredientsSource = 'openfoodfacts' | 'web' | 'photo';
+export type IngredientsSource = 'openfoodfacts' | 'web' | 'manufacturer' | 'photo';
 
 export interface ScanResult {
   verdict: Severity;
@@ -90,6 +90,8 @@ export interface ScanResult {
   additives?: AdditiveAuditResult[];
   nutrientFactors?: NutrientFactor[];
   categoryTag?: string;
+  /** Подтверждённый модератором статус сообщества (если есть). */
+  community?: CommunityStatus;
 }
 
 /** Запись в истории сканирований. */
@@ -194,6 +196,8 @@ export interface RawIngredients {
   traceTags?: string[];
   analysisTags?: string[];
   labelTags?: string[];
+  /** Страны продажи/производства по Open Food Facts (теги вида en:belgium). */
+  countriesTags?: string[];
   nutriscoreGrade?: string;
   nutriscoreScore?: number;
   ecoscoreGrade?: string;
@@ -201,4 +205,13 @@ export interface RawIngredients {
   nutriments?: NutrimentData;
   additivesTags?: string[];
   categoriesTags?: string[];
+}
+
+// ──────────────── Краудсорсинг ────────────────
+
+/** Подтверждённый модератором статус товара по отчётам пользователей. */
+export interface CommunityStatus {
+  status: 'none' | 'haram' | 'halal' | 'disputed';
+  haram: number;
+  halal: number;
 }

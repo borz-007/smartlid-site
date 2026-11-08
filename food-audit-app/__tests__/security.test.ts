@@ -1,173 +1,157 @@
-// Фиктивный ключ собирается из частей, чтобы в исходниках не было строки, похожей на настоящий ключ Google
-const FAKE_KEY = ['AI', 'zaFAKE-test-key-0123456789abcdefghijk'].join('');
-process.env.EXPO_PUBLIC_GEMINI_API_KEY = FAKE_KEY;
+process.env.EXPO_PUBLIC_API_BASE_URL = 'https://api.test.example/';
 
+import fs from 'fs';
+import path from 'path';
 import { config } from '../src/constants/config';
-import { findProductOnWeb, postGenerate, resetWebSearchCooldown } from '../src/services/gemini';
-import { hasValidGtinChecksum } from '../src/services/openFoodFacts';
-import { fetchWithTimeout, geminiHttpError, HttpError, userMessage } from '../src/services/http';
+import { getBackend, postBackend, SERVER_UNREACHABLE } from '../src/services/backend';
+import { auditTextWithAI, findProductOnWeb, resetWebSearchCooldown } from '../src/services/gemini';
+import { fetchWithTimeout, HttpError, userMessage } from '../src/services/http';
+import { createDefaultProfile } from '../src/storage/profileStorage';
+
+jest.mock('@react-native-async-storage/async-storage', () => ({}));
 
 const respond = (status: number, body: unknown) =>
-  Promise.resolve({ ok: status < 400, status, json: () => Promise.resolve(body) } as Response);
+  Promise.resolve({ ok: status < 400, status, json: () => (body === undefined ? Promise.reject(new Error('not json')) : Promise.resolve(body)) } as Response);
 
-// CI собирает APK с EXPO_PUBLIC_DEBUG_AI_ERRORS=1 и запасной моделью: тесты не должны от этого зависеть
+let fetchMock: jest.Mock;
+const originalBase = config.apiBaseUrl;
 beforeEach(() => {
-  config.debugErrors = false;
-  config.geminiFallbackModel = '';
+  fetchMock = jest.fn();
+  (global as any).fetch = fetchMock;
+  config.apiBaseUrl = originalBase;
+  resetWebSearchCooldown();
 });
 
-describe('безопасность сетевого слоя', () => {
-  let fetchMock: jest.Mock;
-
-  beforeEach(() => {
-    fetchMock = jest.fn();
-    (global as any).fetch = fetchMock;
-  });
-
+describe('сетевой слой клиента', () => {
   it('запрещает запросы по http://', async () => {
     await expect(fetchWithTimeout('http://example.com/api')).rejects.toThrow(HttpError);
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it('ключ Gemini уходит заголовком, а не в URL', async () => {
-    fetchMock.mockReturnValueOnce(respond(200, { candidates: [] }));
-    await postGenerate({});
+  it('POST уходит только на наш сервер, без ключей и авторизации', async () => {
+    fetchMock.mockReturnValueOnce(respond(200, { ok: true }));
+    await postBackend('/api/ingredient-audit', { action: 'expiry', image: 'QUJD' });
     const [url, init] = fetchMock.mock.calls[0];
-    expect(url).toMatch(/^https:\/\//);
-    expect(url).not.toContain(FAKE_KEY);
-    expect(url).not.toContain('key=');
-    expect(init.headers['x-goog-api-key']).toBe(FAKE_KEY);
+    expect(url).toBe('https://api.test.example/api/ingredient-audit');
+    expect(Object.keys(init.headers)).toEqual(['Content-Type']);
+    expect(JSON.parse(init.body)).toEqual({ action: 'expiry', image: 'QUJD' });
   });
 
-  it('сырой текст ошибки Gemini не попадает в сообщение для пользователя', async () => {
-    const raw = `API key not valid: ${FAKE_KEY}. Quota exceeded for project 123456789, see https://ai.google.dev/x`;
-    fetchMock.mockReturnValueOnce(respond(429, { error: { message: raw } }));
-    const err = await postGenerate({}).catch((e) => e);
+  it('ответ сервера с ошибкой -> понятное сообщение и код HTTP, без стеков', async () => {
+    fetchMock.mockReturnValueOnce(respond(429, { error: { code: 'quota', message: 'Слишком много запросов к ИИ.', retryAfterSec: 12 } }));
+    const err = await postBackend<any>('/x', {}).catch((e: any) => e);
     expect(err).toBeInstanceOf(HttpError);
-    expect(err.message).not.toContain(FAKE_KEY);
-    expect(err.message).not.toContain('123456789');
-    expect(err.message).not.toContain('http');
+    expect(err.message).toBe('Слишком много запросов к ИИ. (HTTP 429)');
     expect(err.status).toBe(429);
+    expect(err.retryAfterSec).toBe(12);
   });
 
-  it('сбой сети не раскрывает исходное исключение (оно может содержать URL)', async () => {
-    fetchMock.mockRejectedValueOnce(new TypeError(`Network request failed: https://x/?key=${FAKE_KEY}`));
-    const err = await postGenerate({}).catch((e) => e);
-    expect(err.message).not.toContain(FAKE_KEY);
+  it('подробности от сервера (режим отладки сервера) показываются только если пришли', async () => {
+    fetchMock.mockReturnValueOnce(respond(503, { error: { message: 'Сервис ИИ недоступен.', detail: '[HTTP 503 UNAVAILABLE] overloaded' } }));
+    const err = await postBackend<any>('/x', {}).catch((e: any) => e);
+    expect(err.message).toBe('Сервис ИИ недоступен. (HTTP 503)\n[HTTP 503 UNAVAILABLE] overloaded');
+  });
+
+  it('HTML-страница ошибки (502 от Vercel) -> «сервер недоступен»', async () => {
+    fetchMock.mockReturnValueOnce(respond(502, undefined));
+    const err = await postBackend<any>('/x', {}).catch((e: any) => e);
+    expect(err.message).toBe('Сервер SAFA временно недоступен. (HTTP 502)');
+  });
+
+  it('нет сети -> понятное сообщение, исходное исключение не показывается', async () => {
+    fetchMock.mockRejectedValueOnce(new TypeError('Network request failed: https://api.test.example/x'));
+    const err = await getBackend<any>('/x').catch((e: any) => e);
+    expect(err.message).toBe(SERVER_UNREACHABLE);
+  });
+
+  it('таймаут -> сообщение о времени ожидания', async () => {
+    fetchMock.mockRejectedValueOnce(Object.assign(new Error('aborted'), { name: 'AbortError' }));
+    const err = await getBackend<any>('/x').catch((e: any) => e);
+    expect(err.message).toBe('Превышено время ожидания ответа сервера');
+  });
+
+  it('адрес сервера не задан -> понятная ошибка и ни одного запроса', async () => {
+    config.apiBaseUrl = '';
+    await expect(postBackend('/x', {})).rejects.toThrow(/не настроен/);
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 
   it('userMessage показывает только HttpError, остальное заменяет запасным текстом', () => {
-    expect(userMessage(geminiHttpError(429), 'fallback')).toMatch(/Лимит/);
-    expect(userMessage(new TypeError(`boom ${FAKE_KEY}`), 'fallback')).toBe('fallback');
+    expect(userMessage(new HttpError('понятно'), 'fallback')).toBe('понятно');
+    expect(userMessage(new TypeError('boom stack'), 'fallback')).toBe('fallback');
     expect(userMessage('строка', 'fallback')).toBe('fallback');
   });
 });
 
-describe('ошибка лимита Gemini (429)', () => {
-  const body = (quotaId: string, retryDelay?: string) => ({
-    error: {
-      message: `quota exceeded ${FAKE_KEY}`,
-      details: [
-        { '@type': 'type.googleapis.com/google.rpc.QuotaFailure', violations: [{ quotaId, quotaMetric: 'x' }] },
-        ...(retryDelay ? [{ '@type': 'type.googleapis.com/google.rpc.RetryInfo', retryDelay }] : []),
-      ],
-    },
+describe('клиент ИИ: данные уходят на сервер, промпта и ключа на клиенте нет', () => {
+  it('аудит текста отправляет профиль и контекст, а не промпт', async () => {
+    const audit = JSON.stringify({ ingredients_text: 'x', verdict: 'SAFE', issues: [], summary_ru: 'ок' });
+    fetchMock.mockReturnValueOnce(respond(200, { text: audit }));
+    const profile = { ...createDefaultProfile(), halal: true, customStopWords: ['пиво'] };
+    profile.allergens = { ...profile.allergens, milk: true };
+    const r = await auditTextWithAI('suiker, melk', profile, { barcode: '8718951834101', countries: ['en:belgium'], certifications: { halal: false } });
+    expect(r.verdict).toBe('SAFE');
+
+    const body = JSON.parse(fetchMock.mock.calls[0][1].body);
+    expect(body.action).toBe('audit-text');
+    expect(body.profile.allergens).toEqual([{ id: 'milk', label: 'Молоко / лактоза' }]);
+    expect(body.profile.customStopWords).toEqual(['пиво']);
+    expect(body.context).toMatchObject({ barcode: '8718951834101', countries: ['en:belgium'] });
+    expect(body).not.toHaveProperty('systemInstruction');
+    expect(JSON.stringify(body)).not.toMatch(/СТРОГОЕ ПРАВИЛО/);
   });
 
-  it('различает дневной и минутный лимит и не показывает идентификаторы квот', () => {
-    const day = geminiHttpError(429, body('GenerateRequestsPerDayPerProjectPerModel-FreeTier'));
-    expect(day.message).toMatch(/дневной лимит/);
-    expect(day.message).not.toMatch(/PerDay|FreeTier|AIza/);
-
-    const min = geminiHttpError(429, body('GenerateRequestsPerMinutePerProjectPerModel-FreeTier', '34.2s'));
-    expect(min.message).toMatch(/через 35 с/);
-    expect(min.retryAfterSec).toBe(35);
+  it('ответ сервера не в формате JSON модели -> HttpError', async () => {
+    fetchMock.mockReturnValueOnce(respond(200, { text: 'не json' }));
+    await expect(auditTextWithAI('a, b', createDefaultProfile())).rejects.toThrow(HttpError);
   });
 
-  it('без деталей даёт общее сообщение', () => {
-    expect(geminiHttpError(429, { error: { message: 'x' } }).message).toMatch(/Лимит запросов Gemini/);
-    expect(geminiHttpError(429).message).toMatch(/Лимит запросов Gemini/);
-  });
-});
-
-describe('поиск товара в интернете после 429', () => {
-  beforeEach(() => {
-    resetWebSearchCooldown();
-    (global as any).fetch = jest.fn();
+  it('после 429 поиск в интернете делает паузу и не повторяет запрос', async () => {
+    fetchMock.mockReturnValueOnce(respond(429, { error: { message: 'Лимит.', retryAfterSec: 30 } }));
+    await expect(findProductOnWeb('8718951834101')).rejects.toMatchObject({ status: 429 });
+    await expect(findProductOnWeb('8718951834101')).rejects.toMatchObject({ status: 429 });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
-  it('повторно не вызывает Gemini, пока действует пауза', async () => {
-    const f = (global as any).fetch as jest.Mock;
-    f.mockReturnValueOnce(respond(429, { error: { details: [] } }));
-    await expect(findProductOnWeb('5449000000996')).rejects.toThrow(HttpError);
-    await expect(findProductOnWeb('5449000000996')).rejects.toThrow(/Gemini/);
-    expect(f).toHaveBeenCalledTimes(1);
+  it('источники не по https отбрасываются, состав без источников не считается найденным', async () => {
+    fetchMock.mockReturnValueOnce(respond(200, { found: true, ingredientsText: 'water, sugar, gelatin', sources: [{ title: 'x', uri: 'http://insecure.example' }] }));
+    expect((await findProductOnWeb('8718951834101')).found).toBe(false);
   });
 });
 
-describe('контрольная цифра штрихкода', () => {
-  it('принимает корректные GTIN и отклоняет ошибочные', () => {
-    expect(hasValidGtinChecksum('259378663397')).toBe(true);
-    expect(hasValidGtinChecksum('5449000000996')).toBe(true);
-    expect(hasValidGtinChecksum('12345670')).toBe(true);
-    expect(hasValidGtinChecksum('5449000000997')).toBe(false);
-    expect(hasValidGtinChecksum('12345')).toBe(false);
-    expect(hasValidGtinChecksum('abc')).toBe(false);
-  });
-});
+describe('изоляция ключа Gemini: в клиенте его нет', () => {
+  const root = path.resolve(__dirname, '..');
+  const FORBIDDEN = ['generativelanguage', 'x-goog-api-key', 'EXPO_PUBLIC_GEMINI', 'GoogleGenerativeAI', '@google/generative-ai', 'GEMINI_API_KEY', ['AI', 'za'].join('')];
 
-describe('ответы 5xx: повторы, запасная модель, отладочные подробности', () => {
-  let f: jest.Mock;
-  const original = { ...config };
+  function walk(dir: string, out: string[] = []): string[] {
+    for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+      const p = path.join(dir, e.name);
+      if (e.isDirectory()) walk(p, out);
+      else out.push(p);
+    }
+    return out;
+  }
 
-  beforeEach(() => {
-    f = jest.fn();
-    (global as any).fetch = f;
-    config.retryDelaysMs = [0, 0];
-    config.geminiFallbackModel = '';
-    config.debugErrors = false;
-  });
-  afterAll(() => Object.assign(config, original));
+  const files = [
+    ...walk(path.join(root, 'src')),
+    path.join(root, 'App.tsx'),
+    path.join(root, 'app.json'),
+    path.join(root, 'package.json'),
+    path.join(root, '.env.example'),
+    path.resolve(root, '..', '.github', 'workflows', 'food-audit-apk.yml'),
+  ];
 
-  const modelOf = (call: unknown[]) => String(call[0]).match(/models\/([^:]+):/)?.[1];
-
-  it('повторяет запрос при 503 и возвращает успешный ответ', async () => {
-    f.mockReturnValueOnce(respond(503, { error: { status: 'UNAVAILABLE' } })).mockReturnValueOnce(respond(200, { candidates: [] }));
-    await expect(postGenerate({})).resolves.toEqual({ candidates: [] });
-    expect(f).toHaveBeenCalledTimes(2);
+  it.each(FORBIDDEN)('исходники приложения и CI не содержат «%s»', (word) => {
+    const hits = files.filter((f) => fs.readFileSync(f, 'utf8').includes(word)).map((f) => path.relative(root, f));
+    expect(hits).toEqual([]);
   });
 
-  it('после исчерпания повторов пробует запасную модель', async () => {
-    config.geminiFallbackModel = 'fallback-model';
-    f.mockReturnValue(respond(503, {}));
-    f.mockReturnValueOnce(respond(503, {})).mockReturnValueOnce(respond(503, {})).mockReturnValueOnce(respond(503, {}));
-    f.mockReturnValueOnce(respond(200, { candidates: ['ok'] }));
-    await expect(postGenerate({})).resolves.toEqual({ candidates: ['ok'] });
-    expect(f).toHaveBeenCalledTimes(4);
-    expect(modelOf(f.mock.calls[3])).toBe('fallback-model');
-    expect(modelOf(f.mock.calls[0])).toBe(config.geminiModel);
-  });
-
-  it('4xx (кроме 404) не повторяются', async () => {
-    f.mockReturnValue(respond(403, {}));
-    await expect(postGenerate({})).rejects.toMatchObject({ status: 403 });
-    expect(f).toHaveBeenCalledTimes(1);
-  });
-
-  it('в обычном режиме в сообщении только код, без текста Google', async () => {
-    f.mockReturnValue(respond(503, { error: { status: 'UNAVAILABLE', message: `overloaded ${FAKE_KEY}` } }));
-    const err = await postGenerate({}).catch((e) => e);
-    expect(err.message).toMatch(/\(HTTP 503\)/);
-    expect(err.message).not.toMatch(/overloaded|UNAVAILABLE|AIza/);
-  });
-
-  it('в режиме отладки показывает статус и сообщение Google, но вырезает ключ', async () => {
-    config.debugErrors = true;
-    f.mockReturnValue(respond(503, { error: { status: 'UNAVAILABLE', message: `The model is overloaded ${FAKE_KEY}` } }));
-    const err = await postGenerate({}).catch((e) => e);
-    expect(err.message).toMatch(/HTTP 503 UNAVAILABLE/);
-    expect(err.message).toMatch(/The model is overloaded/);
-    expect(err.message).not.toContain(FAKE_KEY);
-    expect(err.message).toContain('[ключ]');
+  it('в клиентском коде нет прямых обращений к Google, кроме нашего сервера и Open Food Facts', () => {
+    const urls = new Set<string>();
+    for (const f of files.filter((x) => x.includes(`${path.sep}src${path.sep}`))) {
+      for (const m of fs.readFileSync(f, 'utf8').matchAll(/https?:\/\/[a-z0-9.-]+/gi)) urls.add(m[0].toLowerCase());
+    }
+    const allowed = ['https://world.openfoodfacts.org', 'https://openfoodfacts.github.io']; // второй — ссылка на документацию в комментарии
+    expect([...urls].filter((u) => !allowed.some((a) => u.startsWith(a)) && !u.includes('example'))).toEqual([]);
   });
 });

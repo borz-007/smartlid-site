@@ -17,7 +17,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { ResultModal } from '../components/ResultModal';
 import { useProfile } from '../context/ProfileContext';
 import { useTheme } from '../context/ThemeContext';
-import { auditBarcode } from '../engine/auditor';
+import { auditBarcode, withCommunity } from '../engine/auditor';
 import { useI18n } from '../i18n';
 import { getCachedResult } from '../storage/cacheStorage';
 import { userMessage } from '../services/http';
@@ -83,7 +83,7 @@ export function HomeScreen({
     try {
       const cached = await getCachedResult(code);
       if (cached) {
-        setResult(cached);
+        setResult(await withCommunity(cached, profile));
         setResultId((n) => n + 1);
         return;
       }
@@ -104,7 +104,7 @@ export function HomeScreen({
     try {
       const cached = await getCachedResult(item.barcode);
       if (cached) {
-        setResult(cached);
+        setResult(await withCommunity(cached, profile));
         setResultId((n) => n + 1);
         return;
       }

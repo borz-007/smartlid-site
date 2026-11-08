@@ -1,9 +1,13 @@
 import { Ionicons } from '@expo/vector-icons';
 import React, { useEffect, useState } from 'react';
-import { Image, Linking, Modal, Pressable, ScrollView, Share, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Alert, Image, Linking, Modal, Pressable, ScrollView, Share, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { getSeverityLabels, getSpecificVerdicts, severityColors } from '../constants/theme';
 import { splitIngredients } from '../engine/ingredients';
+import { submitCommunityReport, type ReportKind } from '../services/community';
+import { userMessage } from '../services/http';
+import { prepareImageForAi } from '../services/image';
+import { pickReportPhoto } from '../services/reportPhoto';
 import { useI18n } from '../i18n';
 import { addToHistory } from '../storage/historyStorage';
 import {
@@ -22,6 +26,8 @@ import { NutrientFactorsList } from './NutrientFactorsList';
 import { AdditivesList } from './AdditivesList';
 import { AlternativesSection } from './AlternativesSection';
 import { ExpiryBadge } from './ExpiryBadge';
+import { IngredientsList } from './IngredientsList';
+import { SugarIndicator } from './SugarIndicator';
 
 interface Props {
   result: ScanResult | null;
@@ -65,6 +71,7 @@ export function ResultModal({ result, onClose, profile, expiry, onSelectAlternat
   const { t } = useI18n();
   const [fav, setFav] = useState(false);
   const [bl, setBl] = useState(false);
+  const [reporting, setReporting] = useState(false);
 
   const severityLabelsI18n = getSeverityLabels(t);
   const specificVerdictsI18n = getSpecificVerdicts(t);
@@ -72,6 +79,7 @@ export function ResultModal({ result, onClose, profile, expiry, onSelectAlternat
   const ingredientsSourceLabels: Record<IngredientsSource, string> = {
     openfoodfacts: t('source_off'),
     web: t('source_web'),
+    manufacturer: t('source_manufacturer'),
     photo: t('source_photo'),
   };
 
@@ -88,6 +96,7 @@ export function ResultModal({ result, onClose, profile, expiry, onSelectAlternat
     local: t('source_local'),
     ai: t('source_ai'),
     openfoodfacts: t('source_openfoodfacts'),
+    community: t('community_title'),
   };
 
   useEffect(() => {
@@ -156,6 +165,42 @@ export function ResultModal({ result, onClose, profile, expiry, onSelectAlternat
     else { await addToBlacklist(p); setBl(true); }
   };
 
+  const startReport = (kind: ReportKind) => {
+    const barcode = product?.barcode;
+    if (!barcode) {
+      Alert.alert(t('report_need_barcode'));
+      return;
+    }
+    const haram = kind === 'haram';
+    const run = async (source: 'camera' | 'gallery') => {
+      setReporting(true);
+      try {
+        const picked = await pickReportPhoto(source);
+        if (picked.status === 'denied') {
+          Alert.alert(t('report_permission'));
+          return;
+        }
+        if (picked.status !== 'ok') return;
+        const imageBase64 = await prepareImageForAi(picked.photo, { maxSide: 1280, quality: 0.6 });
+        await submitCommunityReport({ kind, barcode, productName: product?.name, imageBase64 });
+        Alert.alert(t('report_thanks_title'), t('report_thanks_msg'));
+      } catch (e) {
+        Alert.alert(t('error'), userMessage(e, t('error_check')));
+      } finally {
+        setReporting(false);
+      }
+    };
+    Alert.alert(t(haram ? 'report_choose_title_haram' : 'report_choose_title_halal'), t(haram ? 'report_hint_haram' : 'report_hint_halal'), [
+      { text: t('report_camera'), onPress: () => run('camera') },
+      { text: t('report_gallery'), onPress: () => run('gallery') },
+      { text: t('cancel'), style: 'cancel' },
+    ]);
+  };
+
+  const communityColors = result.community
+    ? severityColors[result.community.status === 'haram' ? 'BANNED' : result.community.status === 'disputed' ? 'WARNING' : 'SAFE']
+    : null;
+
   return (
     <Modal visible animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
       <SafeAreaView style={styles.safe} edges={['bottom']}>
@@ -198,11 +243,46 @@ export function ResultModal({ result, onClose, profile, expiry, onSelectAlternat
             </Pressable>
           </View>
 
+          <View style={styles.feedbackRow}>
+            <Pressable
+              style={[styles.feedbackBtn, { borderColor: '#D92D20' }]}
+              onPress={() => startReport('haram')}
+              disabled={reporting}
+              accessibilityRole="button"
+            >
+              <Text style={[styles.feedbackText, { color: '#D92D20' }]}>{t('report_not_halal')}</Text>
+            </Pressable>
+            <Pressable
+              style={[styles.feedbackBtn, { borderColor: '#12B76A' }]}
+              onPress={() => startReport('halal')}
+              disabled={reporting}
+              accessibilityRole="button"
+            >
+              <Text style={[styles.feedbackText, { color: '#067647' }]}>{t('report_confirm_halal')}</Text>
+            </Pressable>
+          </View>
+          {reporting ? (
+            <View style={styles.sending}>
+              <ActivityIndicator size="small" color="#1F6FEB" />
+              <Text style={styles.muted}>{t('report_sending')}</Text>
+            </View>
+          ) : null}
+
+          {result.community && result.community.status !== 'none' && communityColors ? (
+            <View style={[styles.community, { backgroundColor: communityColors.soft, borderLeftColor: communityColors.bg }]}>
+              <Text style={styles.communityTitle}>{t('community_title')}</Text>
+              <Text style={styles.communityText}>{t(`community_${result.community.status}`)}</Text>
+            </View>
+          ) : null}
+
           {/* Expiry Badge */}
           {expiry && expiry.date ? <ExpiryBadge data={expiry} /> : null}
 
           {/* Nutri-Score */}
           {result.nutriScore ? <NutriScoreBar data={result.nutriScore} /> : null}
+
+          {/* Сахар в кубиках/ложках */}
+          <SugarIndicator sugars={result.nutriments?.sugars} />
 
           {/* Eco-Score */}
           {result.ecoScore ? <EcoScoreBar data={result.ecoScore} /> : null}
@@ -250,11 +330,11 @@ export function ResultModal({ result, onClose, profile, expiry, onSelectAlternat
             <>
               <Text style={styles.h2}>{t('ingredients')}</Text>
               <Text style={styles.muted}>{ingredientsSourceLabels[result.ingredientsSource]}</Text>
-              <View style={styles.ingredientsBox}>
-                {splitIngredients(result.ingredientsText).map((ing, idx) => (
-                  <Text key={`${idx}-${ing}`} style={styles.ingredient}>{ing}</Text>
-                ))}
-              </View>
+              <IngredientsList
+                ingredients={splitIngredients(result.ingredientsText)}
+                issues={result.issues}
+                additives={profile?.halal ? result.additives : undefined}
+              />
             </>
           ) : null}
 
@@ -328,8 +408,13 @@ const styles = StyleSheet.create({
   notes: { marginTop: 16, gap: 4 },
   note: { fontSize: 13, color: '#5B6372', lineHeight: 18 },
   link: { color: '#1F6FEB', fontSize: 15, fontWeight: '600', paddingVertical: 4 },
-  ingredientsBox: { backgroundColor: '#FFFFFF', borderRadius: 10, padding: 12, marginTop: 8, gap: 4 },
-  ingredient: { fontSize: 15, color: '#14171F', lineHeight: 20 },
+  feedbackRow: { flexDirection: 'row', gap: 10, marginBottom: 10 },
+  feedbackBtn: { flex: 1, paddingVertical: 10, paddingHorizontal: 6, borderRadius: 10, borderWidth: 1.5, alignItems: 'center', backgroundColor: '#FFFFFF' },
+  feedbackText: { fontSize: 13, fontWeight: '700', textAlign: 'center' },
+  sending: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 10 },
+  community: { borderLeftWidth: 4, borderRadius: 8, padding: 12, marginBottom: 10 },
+  communityTitle: { fontSize: 12, fontWeight: '700', color: '#5B6372', marginBottom: 2 },
+  communityText: { fontSize: 14, fontWeight: '700', color: '#14171F' },
   nextBtn: {
     flexDirection: 'row', gap: 8, alignItems: 'center', justifyContent: 'center',
     backgroundColor: '#1F6FEB', margin: 16, paddingVertical: 16, borderRadius: 14,

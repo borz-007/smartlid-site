@@ -5,13 +5,22 @@ import { HttpError } from './http';
 export const AI_IMAGE_MAX_SIDE = 1600;
 export const AI_IMAGE_QUALITY = 0.7;
 
-/** Уменьшает фото и пережимает в JPEG, чтобы запрос к Gemini был лёгким. Возвращает base64. */
-export async function prepareImageForAi(photo: { uri: string; width: number; height: number }): Promise<string> {
+interface PhotoSize {
+  uri: string;
+  width: number;
+  height: number;
+}
+
+/** Уменьшает фото и пережимает в JPEG, чтобы запрос к серверу был лёгким. Возвращает base64. */
+export async function prepareImageForAi(
+  photo: PhotoSize,
+  { maxSide = AI_IMAGE_MAX_SIDE, quality = AI_IMAGE_QUALITY }: { maxSide?: number; quality?: number } = {},
+): Promise<string> {
   const actions =
-    Math.max(photo.width, photo.height) > AI_IMAGE_MAX_SIDE
-      ? [{ resize: photo.width >= photo.height ? { width: AI_IMAGE_MAX_SIDE } : { height: AI_IMAGE_MAX_SIDE } }]
+    Math.max(photo.width, photo.height) > maxSide
+      ? [{ resize: photo.width >= photo.height ? { width: maxSide } : { height: maxSide } }]
       : [];
-  const out = await manipulateAsync(photo.uri, actions, { compress: AI_IMAGE_QUALITY, format: SaveFormat.JPEG, base64: true });
+  const out = await manipulateAsync(photo.uri, actions, { compress: quality, format: SaveFormat.JPEG, base64: true });
   if (!out.base64) throw new HttpError('Не удалось подготовить фото');
   return out.base64;
 }
