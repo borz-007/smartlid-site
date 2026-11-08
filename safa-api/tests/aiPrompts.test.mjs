@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { ALLERGEN_IDS, SYSTEM_PROMPT, buildAuditImageBody, buildAuditTextBody, buildExpiryBody, buildSearchBody, describeProfile, responseSchema } from '../../lib/server/aiPrompts.mjs';
+import { ALLERGEN_IDS, SYSTEM_PROMPT, buildAuditImageBody, buildAuditTextBody, buildExpiryBody, buildSearchBody, describeProfile, responseSchema } from '../lib/server/aiPrompts.mjs';
 
 const profile = { halal: true, vegan: false, vegetarian: false, considerTraces: true, allergens: [{ id: 'milk', label: 'Молоко / лактоза' }], customStopWords: ['пиво'] };
 

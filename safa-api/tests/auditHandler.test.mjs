@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { handleAudit } from '../../lib/server/auditHandler.mjs';
+import { handleAudit } from '../lib/server/auditHandler.mjs';
 import { KEY, geminiOk, jsonRes } from './helpers.mjs';
 
 const profile = { halal: true, allergens: [], customStopWords: [] };

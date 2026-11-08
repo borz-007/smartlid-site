@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { CommunityError, checkAdmin, createReport, decideReport, getCommunityStatus, getReportImage, listReports, validateReport } from '../../lib/server/community.mjs';
-import { ValidationError } from '../../lib/server/validate.mjs';
+import { CommunityError, checkAdmin, createReport, decideReport, getCommunityStatus, getReportImage, listReports, validateReport } from '../lib/server/community.mjs';
+import { ValidationError } from '../lib/server/validate.mjs';
 import { fakeDb } from './helpers.mjs';
 
 const body = (over = {}) => ({ kind: 'haram', barcode: '4335619128279', deviceId: 'device-id-0123456789', image: 'QUJDREVG', mimeType: 'image/jpeg', productName: 'Yogo Drink', ...over });

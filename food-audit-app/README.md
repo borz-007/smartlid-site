@@ -76,11 +76,12 @@ __tests__/localFilter.test.ts   22 теста на реальных формул
 
 - **Ключ Gemini только на сервере.** Приложение не содержит ключей и SDK Google: все ИИ-запросы идут обычным
   POST на `/api/ingredient-audit` нашего Next.js-сервера на Vercel, который читает `process.env.GEMINI_API_KEY`
-  (Vercel → Settings → Environment Variables). Шаблон переменных сервера — `.env.example` в корне репозитория.
+  (Vercel → проект `safa-api` → Settings → Environment Variables). Шаблон переменных сервера — `safa-api/.env.example`.
   Автотест (`__tests__/security.test.ts`) и шаг CI «Verify APK contains no Google API key» не дают ключу вернуться в клиент.
-- **Серверные маршруты** лежат в `app/api/` (корень репозитория), логика — в `lib/server/`, тесты — `yarn test:server`:
-  `ingredient-audit` (аудит текста/фото, срок годности, поиск товара), `community-report` / `community-status`
-  (краудсорсинг) и `admin/reports` (модерация, нужен `ADMIN_TOKEN`).
+- **Серверная часть вынесена в отдельный проект `safa-api/`** (свой Next.js-проект, свой проект Vercel, своя база и
+  переменные; сайт slid-tech.com в корне репозитория с ним не связан). Маршруты: `ingredient-audit` (аудит текста/фото,
+  срок годности, поиск товара), `community-report` / `community-status` (краудсорсинг), `admin/reports` (модерация,
+  нужен `ADMIN_TOKEN`). Запуск, переменные и развёртывание описаны в `safa-api/README.md`; тесты — `cd safa-api && npm test`.
 - **Модель** задаётся на сервере переменными `GEMINI_MODEL` и `GEMINI_FALLBACK_MODEL`; проверьте актуальный список
   моделей в документации Google AI перед релизом (модели 1.5 сняты с обслуживания).
 - **Ограничения.** Словари покрывают типичные формулировки, но не все. Приложение — вспомогательный

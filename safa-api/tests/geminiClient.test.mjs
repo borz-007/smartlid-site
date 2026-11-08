@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { AiError, generate, redact } from '../../lib/server/geminiClient.mjs';
+import { AiError, generate, redact } from '../lib/server/geminiClient.mjs';
 import { KEY, geminiOk, jsonRes } from './helpers.mjs';
 
 const base = { apiKey: KEY, model: 'm1', body: {}, sleep: async () => {}, retryDelaysMs: [0, 0] };

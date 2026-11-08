@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { UnsafeUrlError, assertPublicUrl, corroboration, extractIngredientBlock, fetchPage, isPrivateAddress } from '../../lib/server/siteFetch.mjs';
+import { UnsafeUrlError, assertPublicUrl, corroboration, extractIngredientBlock, fetchPage, isPrivateAddress } from '../lib/server/siteFetch.mjs';
 
 const pub = async () => [{ address: '93.184.216.34' }];
 

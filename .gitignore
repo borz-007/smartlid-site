@@ -31,20 +31,8 @@ dist/
 dist
 
 # Environment files (comprehensive coverage)
-# Примечание: уже отслеживаемый файл ./.env правило не затрагивает (git продолжает его вести).
-.env
-.env.*
-!.env.example
 *token.json*
 *credentials.json*
-
-# Signing keys and certificates
-*.keystore
-*.jks
-*.p12
-*.p8
-*.key
-*.mobileprovision
 
 # Logs and debug files
 npm-debug.log*

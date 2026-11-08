@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { findProduct } from '../../lib/server/productSearch.mjs';
+import { findProduct } from '../lib/server/productSearch.mjs';
 import { KEY, geminiOk, jsonRes } from './helpers.mjs';
 
 const chunk = (uri, title = 'site') => ({ web: { uri, title } });

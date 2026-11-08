@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { ValidationError, validateAuditRequest } from '../../lib/server/validate.mjs';
+import { ValidationError, validateAuditRequest } from '../lib/server/validate.mjs';
 
 const profile = { halal: true, allergens: [{ id: 'milk', label: 'Молоко' }], customStopWords: [] };
 
@@ -27,4 +27,15 @@ test('некорректные запросы отклоняются', () => {
     { action: 'expiry', image: 'A'.repeat(1_500_001) },
   ];
   for (const b of bad) assert.throws(() => validateAuditRequest(b), ValidationError, JSON.stringify(b)?.slice(0, 60));
+});
+
+import { isIsolatedDbName } from '../lib/server/db.mjs';
+
+test('база SAFA изолирована: имя обязано содержать safa', () => {
+  assert.ok(isIsolatedDbName('safa'));
+  assert.ok(isIsolatedDbName('SAFA_prod'));
+  assert.ok(!isIsolatedDbName('smartlid'));
+  assert.ok(!isIsolatedDbName('your_database_name'));
+  assert.ok(!isIsolatedDbName(undefined));
+  assert.ok(!isIsolatedDbName(''));
 });
