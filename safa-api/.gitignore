@@ -1,0 +1,11 @@
+node_modules/
+.next/
+.vercel/
+*.log
+
+# Секреты: переменные окружения (шаблон .env.example остаётся в репозитории)
+.env
+.env.*
+!.env.example
+credentials.json
+*credentials.json*
