@@ -22,9 +22,15 @@ cd safa-api
 npm install
 cp .env.example .env.local   # заполнить локально (файл игнорируется git)
 npm run dev                  # http://localhost:3001
-npm test                     # 43 теста на node:test, без сети и без ключей
+npm test                     # 47 тестов на node:test, без сети и без ключей
 npm run build
 ```
+
+### Тесты не зависят от внешних сервисов
+Перед каждым тестовым процессом подключается `tests/support/no-network.mjs`: настоящие `fetch`, DNS и TCP-соединения бросают
+ошибку, а `GEMINI_API_KEY`, `MONGO_URL`, `DB_NAME`, `ADMIN_TOKEN` и другие переменные сервера удаляются. Gemini, страницы
+производителей и MongoDB в тестах подменяются внедрением (`fetchImpl`, `lookup`, фиктивная база в `tests/helpers.mjs`),
+поэтому для CI не нужны ни секреты, ни база. `tests/hermetic.test.mjs` проверяет, что эта защита действует.
 
 ## Развёртывание на Vercel (отдельный проект)
 1. Vercel → Add New → Project → выбрать репозиторий `borz-007/smartlid-site`.
