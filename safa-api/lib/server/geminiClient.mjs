@@ -78,7 +78,8 @@ export function candidateText(json) {
 const defaultSleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 const isRetryable = (e) => e instanceof AiError && (e.code === 'upstream_unavailable' || e.code === 'upstream_network');
-const isFallbackWorthy = (e) => isRetryable(e) || (e instanceof AiError && e.code === 'model_unavailable');
+// Тайм-аут не повторяем на той же модели (это съест весь бюджет), но запасной модели даём шанс.
+const isFallbackWorthy = (e) => isRetryable(e) || (e instanceof AiError && (e.code === 'model_unavailable' || e.code === 'upstream_timeout'));
 
 /**
  * Вызов generateContent с повтором при 5xx/обрыве сети и запасной моделью при 5xx/404.
