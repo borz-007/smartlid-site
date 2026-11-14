@@ -111,7 +111,7 @@ function buildResult(
 
   if (local.needsAI && !ai && verdict === 'SAFE') {
     verdict = 'WARNING';
-    notes.push(`Не удалось проверить сложные компоненты: ${local.aiReasons.join(', ')}.`);
+    notes.push(`Сложные компоненты не проверены автоматически: ${local.aiReasons.join(', ')}. Сверьте с упаковкой.`);
   }
   if (!raw.text.trim() && verdict === 'SAFE') {
     verdict = 'WARNING';
@@ -214,6 +214,7 @@ export async function auditRawIngredients(
   source: IngredientsSource = 'openfoodfacts',
   onStage?: StageCallback,
   aiTimeoutMs?: number,
+  useAI = true,
 ): Promise<ScanResult> {
   const local = analyzeLocal(raw, profile);
   const notes: string[] = [];
@@ -224,6 +225,10 @@ export async function auditRawIngredients(
   }
   if (!raw.text.trim()) return buildResult(raw, local, null, profile, notes, source);
 
+  if (!useAI) {
+    notes.push('Состав взят из Open Food Facts и проверен локальными правилами без ИИ.');
+    return buildResult(raw, local, null, profile, notes, source);
+  }
   if (!profile.aiEnabled) {
     notes.push('ИИ-аудит отключён в настройках.');
     return buildResult(raw, local, null, profile, notes, source);
@@ -240,7 +245,8 @@ export async function auditRawIngredients(
 
 /**
  * Путь А: штрихкод.
- * 1) Open Food Facts; 2) если товара нет или состав пуст — поиск в интернете через Gemini + Google Search;
+ * 1) Open Food Facts: если состав есть — проверка только локальными правилами, Gemini НЕ вызывается;
+ * 2) если товара нет или состав пуст — поиск в интернете через Gemini + Google Search;
  * 3) найденный состав проверяется локальным фильтром и Gemini.
  */
 async function auditBarcodeCore(barcode: string, profile: UserProfile, onStage?: StageCallback): Promise<ScanResult> {
@@ -251,16 +257,16 @@ async function auditBarcodeCore(barcode: string, profile: UserProfile, onStage?:
   } catch (e) {
     if (!(e instanceof ProductNotFoundError)) throw e;
   }
-  if (offRaw && offRaw.text.trim()) return auditRawIngredients(offRaw, profile, 'openfoodfacts', onStage, BARCODE_AI_TIMEOUT_MS);
+  if (offRaw && offRaw.text.trim()) return auditRawIngredients(offRaw, profile, 'openfoodfacts', onStage, BARCODE_AI_TIMEOUT_MS, false);
 
   // Неверная контрольная цифра = код считан с ошибкой: не тратим запрос Gemini на поиск несуществующего товара
   if (!hasValidGtinChecksum(barcode)) {
-    if (offRaw) return auditRawIngredients(offRaw, profile, 'openfoodfacts', onStage, BARCODE_AI_TIMEOUT_MS);
+    if (offRaw) return auditRawIngredients(offRaw, profile, 'openfoodfacts', onStage, BARCODE_AI_TIMEOUT_MS, false);
     throw new ProductNotFoundError(barcode, 'Код, похоже, считан с ошибкой (не сходится контрольная цифра). Наведите камеру ещё раз.');
   }
 
   if (!isAIConfigured()) {
-    if (offRaw) return auditRawIngredients(offRaw, profile, 'openfoodfacts', onStage, BARCODE_AI_TIMEOUT_MS);
+    if (offRaw) return auditRawIngredients(offRaw, profile, 'openfoodfacts', onStage, BARCODE_AI_TIMEOUT_MS, false);
     throw new ProductNotFoundError(barcode, 'Поиск в интернете недоступен: приложение не подключено к серверу SAFA.');
   }
 
@@ -269,11 +275,11 @@ async function auditBarcodeCore(barcode: string, profile: UserProfile, onStage?:
   try {
     web = await findProductOnWeb(barcode, { brand: offRaw?.product?.brand, name: offRaw?.product?.name });
   } catch (e) {
-    if (offRaw) return auditRawIngredients(offRaw, profile, 'openfoodfacts', onStage, BARCODE_AI_TIMEOUT_MS);
+    if (offRaw) return auditRawIngredients(offRaw, profile, 'openfoodfacts', onStage, BARCODE_AI_TIMEOUT_MS, false);
     throw new ProductNotFoundError(barcode, `Поиск в интернете не удался: ${userMessage(e, 'ошибка')}`);
   }
   if (!web.found) {
-    if (offRaw) return auditRawIngredients(offRaw, profile, 'openfoodfacts', onStage, BARCODE_AI_TIMEOUT_MS);
+    if (offRaw) return auditRawIngredients(offRaw, profile, 'openfoodfacts', onStage, BARCODE_AI_TIMEOUT_MS, false);
     throw new ProductNotFoundError(barcode, 'В интернете состав этого товара тоже не найден.');
   }
 

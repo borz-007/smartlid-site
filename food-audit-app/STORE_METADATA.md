@@ -8,7 +8,7 @@ Full description — 4000 символов.
 | --- | --- | --- | --- |
 | Title | 26 | 26 | 30 |
 | Short description | 73 | 68 | 80 |
-| Full description | 2552 | 2685 | 4000 |
+| Full description | 2620 | 2731 | 4000 |
 
 Название на домашнем экране телефона — **Safa** (отдельно от Title в магазине, см. `plugins/withAndroidAppLabel.js`).
 
@@ -66,7 +66,7 @@ EXPIRY DATE SCANNER
 • See at a glance whether the product is fresh, expiring soon or expired
 
 SMART BY DESIGN
-• Local rules block obvious violations instantly. Gemini AI adds a second opinion and can never lift a ban
+• Products found in Open Food Facts are checked instantly by local rules. Gemini AI is used only when a product or its ingredients are missing there, and can never lift a ban
 • If a product is missing from the database, Safa can search the web for its ingredients and shows the sources
 • Reads labels in Dutch, French, German and English
 
@@ -135,7 +135,7 @@ Safa — сканер халяль и состава продуктов: за с
 • Сразу видно: свежий продукт, скоро истекает или просрочен
 
 УМНАЯ ПРОВЕРКА
-• Локальные правила мгновенно останавливают явные нарушения. Gemini AI даёт второе мнение и никогда не снимает запрет
+• Товары из Open Food Facts проверяются мгновенно локальными правилами. Gemini AI подключается, только если товара или состава там нет, и никогда не снимает запрет
 • Если товара нет в базе, Safa может найти состав в интернете и покажет источники
 • Читает этикетки на нидерландском, французском, немецком и английском
 

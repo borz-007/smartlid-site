@@ -131,9 +131,23 @@ describe('auditBarcode: Open Food Facts → наш сервер (поиск в �
     expect(actions()).toEqual([]);
   });
 
+  it('если состав есть в Open Food Facts — Gemini не вызывается, проверка только локальная', async () => {
+    mockNetwork({
+      off: () => json({ status: 1, product: { product_name: 'Water', ingredients_text: 'water, citroenzuur' } }),
+      audit: () => { throw new Error('Gemini не должен вызываться'); },
+      find: () => { throw new Error('поиск не должен вызываться'); },
+    });
+    const r = await auditBarcode('8718951834101', profile);
+    expect(actions()).toEqual([]);
+    expect(r.usedAI).toBe(false);
+    expect(r.ingredientsSource).toBe('openfoodfacts');
+    expect(r.verdict).toBe('SAFE');
+  });
+
   it('серверу уходят страна и сертификаты из OFF для строгого правила халяль', async () => {
     mockNetwork({
-      off: () => json({ status: 1, product: { product_name: 'Snoep', ingredients_text: 'suiker, aroma', labels_tags: ['en:halal'], countries_tags: ['en:belgium'] } }),
+      off: () => json({ status: 1, product: { product_name: 'Snoep', ingredients_text: '', labels_tags: ['en:halal'], countries_tags: ['en:belgium'] } }),
+      find: () => ({ found: true, via: 'web', sources: SOURCE, ingredientsText: 'water, suiker, aroma' }),
       audit: () => ({ text: AUDIT_OK }),
     });
     await auditBarcode('8718951834101', profile);
@@ -155,8 +169,10 @@ describe('auditBarcode: Open Food Facts → наш сервер (поиск в �
 
     it('если ИИ молчит дольше бюджета — показывается результат локального фильтра с пометкой', async () => {
       fetchMock.mockImplementation((url: string, init?: RequestInit) => {
-        if (url.startsWith('https://world.openfoodfacts.org')) return json({ status: 1, product: { product_name: 'Water', ingredients_text: 'water, citroenzuur' } });
+        if (url.startsWith('https://world.openfoodfacts.org')) return json({ status: 1, product: { product_name: 'Water', ingredients_text: '' } });
         if (url.includes('/api/community-status')) return json(NO_COMMUNITY);
+        const b = JSON.parse(String(init?.body ?? '{}'));
+        if (b.action === 'find-product') return json({ found: true, via: 'web', sources: SOURCE, ingredientsText: 'water, citroenzuur' });
         return hang(init); // audit-text не отвечает
       });
       const p = auditBarcode('8718951834101', profile);
