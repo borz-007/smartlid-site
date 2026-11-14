@@ -1,6 +1,6 @@
 process.env.EXPO_PUBLIC_API_BASE_URL = 'https://api.test.example';
 
-import { auditBarcode } from '../src/engine/auditor';
+import { auditBarcode, BARCODE_AI_TIMEOUT_MS, COMMUNITY_GRACE_MS } from '../src/engine/auditor';
 import { splitIngredients } from '../src/engine/ingredients';
 import { extractJsonObject, resetWebSearchCooldown } from '../src/services/gemini';
 import { ProductNotFoundError } from '../src/services/openFoodFacts';
@@ -131,9 +131,23 @@ describe('auditBarcode: Open Food Facts → наш сервер (поиск в �
     expect(actions()).toEqual([]);
   });
 
+  it('если состав есть в Open Food Facts — Gemini не вызывается, проверка только локальная', async () => {
+    mockNetwork({
+      off: () => json({ status: 1, product: { product_name: 'Water', ingredients_text: 'water, citroenzuur' } }),
+      audit: () => { throw new Error('Gemini не должен вызываться'); },
+      find: () => { throw new Error('поиск не должен вызываться'); },
+    });
+    const r = await auditBarcode('8718951834101', profile);
+    expect(actions()).toEqual([]);
+    expect(r.usedAI).toBe(false);
+    expect(r.ingredientsSource).toBe('openfoodfacts');
+    expect(r.verdict).toBe('SAFE');
+  });
+
   it('серверу уходят страна и сертификаты из OFF для строгого правила халяль', async () => {
     mockNetwork({
-      off: () => json({ status: 1, product: { product_name: 'Snoep', ingredients_text: 'suiker, aroma', labels_tags: ['en:halal'], countries_tags: ['en:belgium'] } }),
+      off: () => json({ status: 1, product: { product_name: 'Snoep', ingredients_text: '', labels_tags: ['en:halal'], countries_tags: ['en:belgium'] } }),
+      find: () => ({ found: true, via: 'web', sources: SOURCE, ingredientsText: 'water, suiker, aroma' }),
       audit: () => ({ text: AUDIT_OK }),
     });
     await auditBarcode('8718951834101', profile);
@@ -142,6 +156,45 @@ describe('auditBarcode: Open Food Facts → наш сервер (поиск в �
     expect(audit.context.certifications).toEqual({ halal: true, vegan: false });
     expect(audit.context.barcode).toBe('8718951834101');
     expect(audit.profile.halal).toBe(true);
+  });
+
+  describe('скорость: медленный сервер не задерживает результат штрихкода', () => {
+    const hang = (init?: RequestInit) =>
+      new Promise<Response>((_, reject) => {
+        init?.signal?.addEventListener('abort', () => reject(Object.assign(new Error('aborted'), { name: 'AbortError' })));
+      });
+
+    beforeEach(() => jest.useFakeTimers());
+    afterEach(() => jest.useRealTimers());
+
+    it('если ИИ молчит дольше бюджета — показывается результат локального фильтра с пометкой', async () => {
+      fetchMock.mockImplementation((url: string, init?: RequestInit) => {
+        if (url.startsWith('https://world.openfoodfacts.org')) return json({ status: 1, product: { product_name: 'Water', ingredients_text: '' } });
+        if (url.includes('/api/community-status')) return json(NO_COMMUNITY);
+        const b = JSON.parse(String(init?.body ?? '{}'));
+        if (b.action === 'find-product') return json({ found: true, via: 'web', sources: SOURCE, ingredientsText: 'water, citroenzuur' });
+        return hang(init); // audit-text не отвечает
+      });
+      const p = auditBarcode('8718951834101', profile);
+      await jest.advanceTimersByTimeAsync(BARCODE_AI_TIMEOUT_MS + 50);
+      const r = await p;
+      expect(r.usedAI).toBe(false);
+      expect(r.notes.join(' ')).toContain('ИИ недоступен');
+      expect(r.verdict).not.toBe('BANNED');
+    });
+
+    it('если статус сообщества не отвечает — ждём его не дольше короткой паузы', async () => {
+      fetchMock.mockImplementation((url: string, init?: RequestInit) => {
+        if (url.startsWith('https://world.openfoodfacts.org')) return json({ status: 1, product: { product_name: 'Snoep', ingredients_text: 'suiker, gelatine' } });
+        if (url.includes('/api/community-status')) return hang(init);
+        return json({ text: AUDIT_OK });
+      });
+      const p = auditBarcode('8718951834101', profile);
+      await jest.advanceTimersByTimeAsync(COMMUNITY_GRACE_MS + 50);
+      const r = await p;
+      expect(r.community).toBeUndefined();
+      expect(r.verdict).not.toBe('SAFE');
+    });
   });
 
   describe('статус сообщества', () => {

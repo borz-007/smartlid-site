@@ -90,13 +90,13 @@ export function parseAiAudit(raw: string): AiAudit {
 }
 
 /** Аудит уже известного текста состава (путь А или после локального фильтра). */
-export async function auditTextWithAI(text: string, profile: UserProfile, ctx: AuditContext = {}): Promise<AiAudit> {
+export async function auditTextWithAI(text: string, profile: UserProfile, ctx: AuditContext = {}, timeoutMs?: number): Promise<AiAudit> {
   const r = await postBackend<{ text?: string }>(AUDIT_PATH, {
     action: 'audit-text',
     text: text.slice(0, 6000),
     profile: profilePayload(profile),
     context: ctx,
-  });
+  }, timeoutMs);
   return parseAiAudit(r.text ?? '');
 }
 
@@ -126,6 +126,9 @@ export interface WebProduct {
   via: 'manufacturer' | 'web';
 }
 
+/** Поиск в интернете дольше этого времени не ждём. */
+export const WEB_SEARCH_TIMEOUT_MS = 25000;
+
 let searchBlock: { until: number; error: HttpError } | null = null;
 
 export function resetWebSearchCooldown(): void {
@@ -140,7 +143,7 @@ export async function findProductOnWeb(barcode: string, hints: { brand?: string;
   if (searchBlock && Date.now() < searchBlock.until) throw searchBlock.error;
   let r: Partial<WebProduct>;
   try {
-    r = await postBackend<Partial<WebProduct>>(AUDIT_PATH, { action: 'find-product', barcode, brand: hints.brand, name: hints.name });
+    r = await postBackend<Partial<WebProduct>>(AUDIT_PATH, { action: 'find-product', barcode, brand: hints.brand, name: hints.name }, WEB_SEARCH_TIMEOUT_MS);
   } catch (e) {
     // После лимита (429) не тратим запросы повторно, пока он не отпустит
     if (e instanceof HttpError && e.status === 429) {

@@ -37,6 +37,27 @@ test('404 основной модели переключает на запасн
   await generate({ ...base, fallbackModel: 'm2', fetchImpl });
 });
 
+test('таймаут основной модели переключает на запасную (без повторов на основной)', async () => {
+  const models = [];
+  const fetchImpl = async (url) => {
+    models.push(/models\/([^:]+):/.exec(url)[1]);
+    if (models.at(-1) === 'm2') return jsonRes(200, geminiOk('ok'));
+    const e = new Error('x');
+    e.name = 'AbortError';
+    throw e;
+  };
+  const json = await generate({ ...base, fallbackModel: 'm2', fetchImpl });
+  assert.deepEqual(models, ['m1', 'm2']);
+  assert.equal(json.candidates[0].content.parts[0].text, 'ok');
+});
+
+test('таймаут без запасной модели остаётся ошибкой 504', async () => {
+  const fetchImpl = async () => { const e = new Error('x'); e.name = 'AbortError'; throw e; };
+  const err = await generate({ ...base, fetchImpl }).catch((e) => e);
+  assert.equal(err.status, 504);
+  assert.equal(err.code, 'upstream_timeout');
+});
+
 test('400/403 не повторяются; сырой текст Google и ключ не попадают в сообщение', async () => {
   let n = 0;
   const fetchImpl = async () => (n++, jsonRes(403, { error: { status: 'PERMISSION_DENIED', message: `API key ${KEY} not valid, project 123456789` } }));

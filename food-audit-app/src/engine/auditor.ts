@@ -111,7 +111,7 @@ function buildResult(
 
   if (local.needsAI && !ai && verdict === 'SAFE') {
     verdict = 'WARNING';
-    notes.push(`Не удалось проверить сложные компоненты: ${local.aiReasons.join(', ')}.`);
+    notes.push(`Сложные компоненты не проверены автоматически: ${local.aiReasons.join(', ')}. Сверьте с упаковкой.`);
   }
   if (!raw.text.trim() && verdict === 'SAFE') {
     verdict = 'WARNING';
@@ -199,12 +199,22 @@ async function tryAI<T>(fn: () => Promise<T>, notes: string[]): Promise<T | null
 
 export type StageCallback = (text: string) => void;
 
+/**
+ * Скорость важнее второго мнения ИИ: если сервер не ответил за это время, по штрихкоду показываем
+ * результат локального фильтра (без снятия запретов; сомнительное остаётся жёлтым) с пометкой.
+ */
+export const BARCODE_AI_TIMEOUT_MS = 7000;
+/** Проверка статуса сообщества не должна задерживать результат дольше этого. */
+export const COMMUNITY_GRACE_MS = 1200;
+
 /** Аудит готового текста (Open Food Facts, интернет или ручной ввод). */
 export async function auditRawIngredients(
   raw: RawIngredients,
   profile: UserProfile,
   source: IngredientsSource = 'openfoodfacts',
   onStage?: StageCallback,
+  aiTimeoutMs?: number,
+  useAI = true,
 ): Promise<ScanResult> {
   const local = analyzeLocal(raw, profile);
   const notes: string[] = [];
@@ -215,6 +225,10 @@ export async function auditRawIngredients(
   }
   if (!raw.text.trim()) return buildResult(raw, local, null, profile, notes, source);
 
+  if (!useAI) {
+    notes.push('Состав взят из Open Food Facts и проверен локальными правилами без ИИ.');
+    return buildResult(raw, local, null, profile, notes, source);
+  }
   if (!profile.aiEnabled) {
     notes.push('ИИ-аудит отключён в настройках.');
     return buildResult(raw, local, null, profile, notes, source);
@@ -225,13 +239,14 @@ export async function auditRawIngredients(
   }
 
   onStage?.('Gemini проверяет состав…');
-  const ai = await tryAI(() => auditTextWithAI(raw.text, profile, aiContext(raw, local.aiReasons)), notes);
+  const ai = await tryAI(() => auditTextWithAI(raw.text, profile, aiContext(raw, local.aiReasons), aiTimeoutMs), notes);
   return buildResult(raw, local, ai, profile, notes, source);
 }
 
 /**
  * Путь А: штрихкод.
- * 1) Open Food Facts; 2) если товара нет или состав пуст — поиск в интернете через Gemini + Google Search;
+ * 1) Open Food Facts: если состав есть — проверка только локальными правилами, Gemini НЕ вызывается;
+ * 2) если товара нет или состав пуст — поиск в интернете через Gemini + Google Search;
  * 3) найденный состав проверяется локальным фильтром и Gemini.
  */
 async function auditBarcodeCore(barcode: string, profile: UserProfile, onStage?: StageCallback): Promise<ScanResult> {
@@ -242,16 +257,16 @@ async function auditBarcodeCore(barcode: string, profile: UserProfile, onStage?:
   } catch (e) {
     if (!(e instanceof ProductNotFoundError)) throw e;
   }
-  if (offRaw && offRaw.text.trim()) return auditRawIngredients(offRaw, profile, 'openfoodfacts', onStage);
+  if (offRaw && offRaw.text.trim()) return auditRawIngredients(offRaw, profile, 'openfoodfacts', onStage, BARCODE_AI_TIMEOUT_MS, false);
 
   // Неверная контрольная цифра = код считан с ошибкой: не тратим запрос Gemini на поиск несуществующего товара
   if (!hasValidGtinChecksum(barcode)) {
-    if (offRaw) return auditRawIngredients(offRaw, profile, 'openfoodfacts', onStage);
+    if (offRaw) return auditRawIngredients(offRaw, profile, 'openfoodfacts', onStage, BARCODE_AI_TIMEOUT_MS, false);
     throw new ProductNotFoundError(barcode, 'Код, похоже, считан с ошибкой (не сходится контрольная цифра). Наведите камеру ещё раз.');
   }
 
   if (!isAIConfigured()) {
-    if (offRaw) return auditRawIngredients(offRaw, profile, 'openfoodfacts', onStage);
+    if (offRaw) return auditRawIngredients(offRaw, profile, 'openfoodfacts', onStage, BARCODE_AI_TIMEOUT_MS, false);
     throw new ProductNotFoundError(barcode, 'Поиск в интернете недоступен: приложение не подключено к серверу SAFA.');
   }
 
@@ -260,11 +275,11 @@ async function auditBarcodeCore(barcode: string, profile: UserProfile, onStage?:
   try {
     web = await findProductOnWeb(barcode, { brand: offRaw?.product?.brand, name: offRaw?.product?.name });
   } catch (e) {
-    if (offRaw) return auditRawIngredients(offRaw, profile, 'openfoodfacts', onStage);
+    if (offRaw) return auditRawIngredients(offRaw, profile, 'openfoodfacts', onStage, BARCODE_AI_TIMEOUT_MS, false);
     throw new ProductNotFoundError(barcode, `Поиск в интернете не удался: ${userMessage(e, 'ошибка')}`);
   }
   if (!web.found) {
-    if (offRaw) return auditRawIngredients(offRaw, profile, 'openfoodfacts', onStage);
+    if (offRaw) return auditRawIngredients(offRaw, profile, 'openfoodfacts', onStage, BARCODE_AI_TIMEOUT_MS, false);
     throw new ProductNotFoundError(barcode, 'В интернете состав этого товара тоже не найден.');
   }
 
@@ -281,7 +296,7 @@ async function auditBarcodeCore(barcode: string, profile: UserProfile, onStage?:
     },
   };
   const fromManufacturer = web.via === 'manufacturer';
-  const result = await auditRawIngredients(raw, profile, fromManufacturer ? 'manufacturer' : 'web', onStage);
+  const result = await auditRawIngredients(raw, profile, fromManufacturer ? 'manufacturer' : 'web', onStage, BARCODE_AI_TIMEOUT_MS);
   result.notes.unshift(
     fromManufacturer
       ? 'Состав взят со страницы производителя — обязательно сверьте его с упаковкой.'
@@ -290,9 +305,21 @@ async function auditBarcodeCore(barcode: string, profile: UserProfile, onStage?:
   return result;
 }
 
-/** Путь А с учётом подтверждённого модератором статуса сообщества (параллельный запрос, при сбое игнорируется). */
+/**
+ * Путь А с учётом подтверждённого модератором статуса сообщества. Запрос идёт параллельно основной проверке
+ * и не задерживает результат дольше COMMUNITY_GRACE_MS (при медленном ответе или сбое статус просто не применяется).
+ */
 export async function auditBarcode(barcode: string, profile: UserProfile, onStage?: StageCallback): Promise<ScanResult> {
-  const [result, community] = await Promise.all([auditBarcodeCore(barcode, profile, onStage), fetchCommunityStatus(barcode)]);
+  const communityPromise = fetchCommunityStatus(barcode);
+  const result = await auditBarcodeCore(barcode, profile, onStage);
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const community = await Promise.race([
+    communityPromise,
+    new Promise<null>((resolve) => {
+      timer = setTimeout(() => resolve(null), COMMUNITY_GRACE_MS);
+    }),
+  ]);
+  if (timer) clearTimeout(timer);
   return applyCommunity(result, community, profile);
 }
 
