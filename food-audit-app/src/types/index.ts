@@ -78,6 +78,8 @@ export interface ScanResult {
   traces: Issue[];
   ingredientsText: string;
   ingredientsSource: IngredientsSource;
+  /** Исходные данные проверки — нужны для ручной перепроверки через ИИ. */
+  raw?: RawIngredients;
   product?: ProductInfo;
   /** Краткое резюме ИИ (если вызывался). */
   aiSummaryRu?: string;

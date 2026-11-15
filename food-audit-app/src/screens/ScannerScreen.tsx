@@ -83,7 +83,8 @@ export function ScannerScreen({ initialMode = 'barcode', onOpenSettings, onBack 
     try {
       const photo = await cameraRef.current.takePictureAsync({ quality: 0.8, skipProcessing: false });
       if (!photo?.uri) throw new HttpError(t('no_photo'));
-      showResult(await auditPhoto(await prepareImageForAi(photo), profile));
+      // Распознавание на устройстве (Google ML Kit): фото никуда не отправляется
+      showResult(await auditPhoto(photo.uri, profile));
     } catch (e) {
       fail(t('photo_error'), userMessage(e, t('photo_error_hint')));
     } finally {

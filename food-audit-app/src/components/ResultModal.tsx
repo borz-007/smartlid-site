@@ -3,7 +3,9 @@ import React, { useEffect, useState } from 'react';
 import { ActivityIndicator, Alert, Image, Linking, Modal, Pressable, ScrollView, Share, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { getSeverityLabels, getSpecificVerdicts, severityColors } from '../constants/theme';
+import { recheckWithAI } from '../engine/auditor';
 import { splitIngredients } from '../engine/ingredients';
+import { isAIConfigured } from '../constants/config';
 import { submitCommunityReport, type ReportKind } from '../services/community';
 import { userMessage } from '../services/http';
 import { prepareImageForAi } from '../services/image';
@@ -67,8 +69,12 @@ function toSavedProduct(result: ScanResult): SavedProduct {
   };
 }
 
-export function ResultModal({ result, onClose, profile, expiry, onSelectAlternative, saveToHistory = true }: Props) {
+export function ResultModal({ result: baseResult, onClose, profile, expiry, onSelectAlternative, saveToHistory = true }: Props) {
   const { t } = useI18n();
+  // Результат ручной перепроверки через ИИ (если пользователь нажал кнопку) заменяет базовый на экране
+  const [aiResult, setAiResult] = useState<ScanResult | null>(null);
+  const [rechecking, setRechecking] = useState(false);
+  const result = aiResult ?? baseResult;
   const [fav, setFav] = useState(false);
   const [bl, setBl] = useState(false);
   const [reporting, setReporting] = useState(false);
@@ -100,18 +106,33 @@ export function ResultModal({ result, onClose, profile, expiry, onSelectAlternat
   };
 
   useEffect(() => {
-    if (!result) return;
+    setAiResult(null);
+    if (!baseResult) return;
     if (saveToHistory) {
-      addToHistory(result);
-      if (result.product?.barcode) setCachedResult(result.product.barcode, result);
+      addToHistory(baseResult);
+      if (baseResult.product?.barcode) setCachedResult(baseResult.product.barcode, baseResult);
     }
-    const bc = result.product?.barcode;
-    const nm = result.product?.name;
+    const bc = baseResult.product?.barcode;
+    const nm = baseResult.product?.name;
     isFavorite(bc, nm).then(setFav);
     isBlacklisted(bc, nm).then(setBl);
-  }, [result]);
+  }, [baseResult]);
 
   if (!result) return null;
+
+  const canRecheck = Boolean(profile) && profile!.aiEnabled && isAIConfigured() && !result.usedAI && result.ingredientsText.trim().length > 0;
+
+  const handleRecheck = async () => {
+    if (!profile || rechecking) return;
+    setRechecking(true);
+    try {
+      setAiResult(await recheckWithAI(result, profile));
+    } catch (e) {
+      Alert.alert(t('error'), userMessage(e, t('ai_recheck_failed')));
+    } finally {
+      setRechecking(false);
+    }
+  };
 
   const c = severityColors[result.verdict];
   const label = severityLabelsI18n[result.verdict];
@@ -338,6 +359,16 @@ export function ResultModal({ result, onClose, profile, expiry, onSelectAlternat
             </>
           ) : null}
 
+          {canRecheck ? (
+            <View style={styles.recheckBox}>
+              <Pressable style={styles.recheckBtn} onPress={handleRecheck} disabled={rechecking} accessibilityRole="button">
+                {rechecking ? <ActivityIndicator color="#1F6FEB" /> : <Ionicons name="sparkles-outline" size={18} color="#1F6FEB" />}
+                <Text style={styles.recheckText}>{rechecking ? t('ai_rechecking') : t('ai_recheck')}</Text>
+              </Pressable>
+              <Text style={styles.recheckHint}>{t('ai_recheck_hint')}</Text>
+            </View>
+          ) : null}
+
           {product?.sources?.length ? (
             <>
               <Text style={styles.h2}>{t('sources')}</Text>
@@ -408,6 +439,21 @@ const styles = StyleSheet.create({
   notes: { marginTop: 16, gap: 4 },
   note: { fontSize: 13, color: '#5B6372', lineHeight: 18 },
   link: { color: '#1F6FEB', fontSize: 15, fontWeight: '600', paddingVertical: 4 },
+  recheckBox: { marginTop: 16, alignItems: 'center', gap: 6 },
+  recheckBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    borderWidth: 1.5,
+    borderColor: '#1F6FEB',
+    borderRadius: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 18,
+    alignSelf: 'stretch',
+  },
+  recheckText: { color: '#1F6FEB', fontSize: 15, fontWeight: '700' },
+  recheckHint: { color: '#667085', fontSize: 12, textAlign: 'center' },
   feedbackRow: { flexDirection: 'row', gap: 10, marginBottom: 10 },
   feedbackBtn: { flex: 1, paddingVertical: 10, paddingHorizontal: 6, borderRadius: 10, borderWidth: 1.5, alignItems: 'center', backgroundColor: '#FFFFFF' },
   feedbackText: { fontSize: 13, fontWeight: '700', textAlign: 'center' },

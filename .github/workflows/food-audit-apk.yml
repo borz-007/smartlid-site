@@ -73,6 +73,16 @@ jobs:
             exit 1
           fi
 
+      - name: Verify APK contains the ML Kit OCR module
+        run: |
+          APK=android/app/build/outputs/apk/release/app-release.apk
+          echo "APK size: $(du -h "$APK" | cut -f1)"
+          found=
+          for d in $(unzip -Z1 "$APK" 'classes*.dex'); do
+            if unzip -p "$APK" "$d" | grep -aq 'com/rnmlkit/textrecognition/TextRecognitionModule'; then found=1; fi
+          done
+          [ -n "$found" ] || { echo "::error::The ML Kit text recognition module is missing from the APK"; exit 1; }
+
       - uses: actions/upload-artifact@v4
         with:
           name: food-audit-apk

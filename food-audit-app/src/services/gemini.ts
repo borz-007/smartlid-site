@@ -1,6 +1,6 @@
 /**
- * Клиент ИИ-аудитора. Вся работа с Gemini (ключ, промпты, поиск в интернете) выполняется на нашем
- * сервере; здесь — только запросы к нему и проверка структуры ответа.
+ * Клиент ИИ-аудитора. Вся работа с Gemini (ключ, промпты) выполняется на нашем сервере; здесь —
+ * только запрос «Перепроверить через ИИ» (уходит ТОЛЬКО текст состава, не фото) и проверка структуры ответа.
  * Ответ модели валидируется и фильтруется по профилю в auditor.ts: ИИ не может «снять» запрет,
  * найденный локальным фильтром.
  */
@@ -89,7 +89,7 @@ export function parseAiAudit(raw: string): AiAudit {
   };
 }
 
-/** Аудит уже известного текста состава (путь А или после локального фильтра). */
+/** Ручная перепроверка текста состава через ИИ (кнопка на экране результата). */
 export async function auditTextWithAI(text: string, profile: UserProfile, ctx: AuditContext = {}, timeoutMs?: number): Promise<AiAudit> {
   const r = await postBackend<{ text?: string }>(AUDIT_PATH, {
     action: 'audit-text',
@@ -98,72 +98,4 @@ export async function auditTextWithAI(text: string, profile: UserProfile, ctx: A
     context: ctx,
   }, timeoutMs);
   return parseAiAudit(r.text ?? '');
-}
-
-/** Путь Б: фото этикетки → распознавание + аудит одним мультимодальным запросом на сервере. */
-export async function auditImageWithAI(imageBase64: string, profile: UserProfile, ctx: AuditContext = {}, mimeType = 'image/jpeg'): Promise<AiAudit> {
-  const r = await postBackend<{ text?: string }>(AUDIT_PATH, {
-    action: 'audit-image',
-    image: imageBase64,
-    mimeType,
-    profile: profilePayload(profile),
-    context: ctx,
-  });
-  return parseAiAudit(r.text ?? '');
-}
-
-// ───────────────────────── Поиск товара в интернете ─────────────────────────
-
-export interface WebProduct {
-  found: boolean;
-  name?: string;
-  brand?: string;
-  manufacturer?: string;
-  ingredientsText: string;
-  /** Страницы, на которые опирался ответ. */
-  sources: { title: string; uri: string }[];
-  /** 'manufacturer' — состав разобран со страницы официального сайта; 'web' — из других источников. */
-  via: 'manufacturer' | 'web';
-}
-
-/** Поиск в интернете дольше этого времени не ждём. */
-export const WEB_SEARCH_TIMEOUT_MS = 25000;
-
-let searchBlock: { until: number; error: HttpError } | null = null;
-
-export function resetWebSearchCooldown(): void {
-  searchBlock = null;
-}
-
-/**
- * Путь А, запасной вариант: товара нет в Open Food Facts → сервер ищет страницу товара
- * (приоритет — официальный сайт производителя), разбирает состав и возвращает его.
- */
-export async function findProductOnWeb(barcode: string, hints: { brand?: string; name?: string } = {}): Promise<WebProduct> {
-  if (searchBlock && Date.now() < searchBlock.until) throw searchBlock.error;
-  let r: Partial<WebProduct>;
-  try {
-    r = await postBackend<Partial<WebProduct>>(AUDIT_PATH, { action: 'find-product', barcode, brand: hints.brand, name: hints.name }, WEB_SEARCH_TIMEOUT_MS);
-  } catch (e) {
-    // После лимита (429) не тратим запросы повторно, пока он не отпустит
-    if (e instanceof HttpError && e.status === 429) {
-      searchBlock = { until: Date.now() + Math.min(e.retryAfterSec ?? 60, 600) * 1000, error: e };
-    }
-    throw e;
-  }
-  const str = (v: unknown) => (typeof v === 'string' && v.trim() ? v.trim() : undefined);
-  const ingredientsText = typeof r.ingredientsText === 'string' ? r.ingredientsText.trim() : '';
-  const sources = (Array.isArray(r.sources) ? r.sources : [])
-    .map((s) => ({ title: String(s?.title ?? ''), uri: String(s?.uri ?? '') }))
-    .filter((s) => s.uri.startsWith('https://'));
-  return {
-    // Без источников состав считаем непроверенным
-    found: Boolean(r.found) && ingredientsText.length > 10 && sources.length > 0,
-    name: str(r.name),
-    brand: str(r.brand),
-    manufacturer: str(r.manufacturer),
-    ingredientsText,
-    sources,
-    via: r.via === 'manufacturer' ? 'manufacturer' : 'web',
-  };
 }

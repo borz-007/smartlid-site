@@ -1,15 +1,17 @@
 /**
- * Оркестратор: Шаг 1 (получение текста) → Шаг 2 (локальный фильтр) → Шаг 3 (ИИ).
+ * Оркестратор. Основные сценарии работают БЕЗ облачного ИИ:
+ *  - штрихкод: Open Food Facts → локальный анализатор на устройстве;
+ *  - фото состава: офлайн-распознавание (Google ML Kit) → очистка текста → локальный анализатор.
+ * Gemini (наш сервер safa-api) вызывается только вручную кнопкой «Перепроверить через ИИ»
+ * (recheckWithAI), и туда уходит только текст состава, не фото.
  *
  * Политика безопасности вердикта:
- *  - Локальный BANNED выдаётся мгновенно, ИИ не вызывается (экономия токенов).
- *  - В остальных случаях состав всегда дополнительно проверяет Gemini (если ключ задан).
  *  - Итог = максимум(локальный, ИИ): ИИ может только ужесточить вердикт.
- *  - Если состав требовал проверки ИИ, но ИИ недоступен — минимум WARNING.
+ *  - Если состав требовал уточнения, а ИИ не использовался — минимум WARNING.
  *  - Ответы ИИ фильтруются по профилю (ИИ не может добавить категорию,
  *    которую пользователь не включал).
  */
-import { isAIConfigured } from '../constants/config';
+import { config, isAIConfigured } from '../constants/config';
 import type {
   AdditiveAuditResult,
   EcoScoreData,
@@ -28,12 +30,14 @@ import type {
 import { maxSeverity } from '../types';
 import { analyzeAdditives } from '../services/additives';
 import { fetchCommunityStatus } from '../services/community';
-import { auditImageWithAI, auditTextWithAI, findProductOnWeb, type AiAudit, type AiIssue, type AuditContext } from '../services/gemini';
+import { auditTextWithAI, type AiAudit, type AiIssue, type AuditContext } from '../services/gemini';
+import { recognizeText } from '../services/ocr';
 import { computeNutriScore } from '../services/nutriScore';
 import { analyzeNutrientFactors } from '../services/nutrientFactors';
-import { HttpError, userMessage } from '../services/http';
+import { HttpError } from '../services/http';
 import { fetchProductByBarcode, hasValidGtinChecksum, ProductNotFoundError } from '../services/openFoodFacts';
 import { analyzeLocal, computeVerdict, hasActiveDiet, type LocalResult } from './localFilter';
+import { extractIngredientsBlock } from './ocrText';
 import { normalizePlain } from './textNormalize';
 
 function aiIssueAllowed(i: AiIssue, p: UserProfile): boolean {
@@ -130,6 +134,7 @@ function buildResult(
     traces,
     ingredientsText: raw.text,
     ingredientsSource,
+    raw,
     product: raw.product,
     aiSummaryRu: ai?.summary_ru || undefined,
     usedAI: Boolean(ai),
@@ -188,66 +193,33 @@ export async function withCommunity(result: ScanResult, profile: UserProfile): P
   return applyCommunity(base, await fetchCommunityStatus(barcode), profile);
 }
 
-async function tryAI<T>(fn: () => Promise<T>, notes: string[]): Promise<T | null> {
-  try {
-    return await fn();
-  } catch (e) {
-    notes.push(`ИИ недоступен: ${userMessage(e, 'неизвестная ошибка')}`);
-    return null;
-  }
-}
-
 export type StageCallback = (text: string) => void;
 
-/**
- * Скорость важнее второго мнения ИИ: если сервер не ответил за это время, по штрихкоду показываем
- * результат локального фильтра (без снятия запретов; сомнительное остаётся жёлтым) с пометкой.
- */
-export const BARCODE_AI_TIMEOUT_MS = 7000;
 /** Проверка статуса сообщества не должна задерживать результат дольше этого. */
 export const COMMUNITY_GRACE_MS = 1200;
 
-/** Аудит готового текста (Open Food Facts, интернет или ручной ввод). */
-export async function auditRawIngredients(
-  raw: RawIngredients,
-  profile: UserProfile,
-  source: IngredientsSource = 'openfoodfacts',
-  onStage?: StageCallback,
-  aiTimeoutMs?: number,
-  useAI = true,
-): Promise<ScanResult> {
+/**
+ * Аудит готового текста состава ТОЛЬКО локальными правилами (без обращения к серверу и ИИ).
+ * Источник: Open Food Facts или распознанное по фото.
+ */
+export async function auditRawIngredients(raw: RawIngredients, profile: UserProfile, source: IngredientsSource = 'openfoodfacts'): Promise<ScanResult> {
   const local = analyzeLocal(raw, profile);
   const notes: string[] = [];
-
   if (local.verdict === 'BANNED') {
-    notes.push('Мгновенный вердикт локального фильтра — ИИ не вызывался.');
-    return buildResult(raw, { ...local, needsAI: false }, null, profile, notes, source);
+    notes.push('Мгновенный вердикт локального фильтра.');
+  } else if (raw.text.trim()) {
+    notes.push(
+      source === 'photo'
+        ? 'Текст распознан на устройстве и проверен локальными правилами без ИИ.'
+        : 'Состав взят из Open Food Facts и проверен локальными правилами без ИИ.',
+    );
   }
-  if (!raw.text.trim()) return buildResult(raw, local, null, profile, notes, source);
-
-  if (!useAI) {
-    notes.push('Состав взят из Open Food Facts и проверен локальными правилами без ИИ.');
-    return buildResult(raw, local, null, profile, notes, source);
-  }
-  if (!profile.aiEnabled) {
-    notes.push('ИИ-аудит отключён в настройках.');
-    return buildResult(raw, local, null, profile, notes, source);
-  }
-  if (!isAIConfigured()) {
-    notes.push('Ключ Gemini не настроен — использован только локальный фильтр.');
-    return buildResult(raw, local, null, profile, notes, source);
-  }
-
-  onStage?.('Gemini проверяет состав…');
-  const ai = await tryAI(() => auditTextWithAI(raw.text, profile, aiContext(raw, local.aiReasons), aiTimeoutMs), notes);
-  return buildResult(raw, local, ai, profile, notes, source);
+  return buildResult(raw, local, null, profile, notes, source);
 }
 
 /**
- * Путь А: штрихкод.
- * 1) Open Food Facts: если состав есть — проверка только локальными правилами, Gemini НЕ вызывается;
- * 2) если товара нет или состав пуст — поиск в интернете через Gemini + Google Search;
- * 3) найденный состав проверяется локальным фильтром и Gemini.
+ * Путь А: штрихкод. Только Open Food Facts + локальные правила.
+ * Нет товара или в карточке пустой состав — ProductNotFoundError (экран предложит сфотографировать состав).
  */
 async function auditBarcodeCore(barcode: string, profile: UserProfile, onStage?: StageCallback): Promise<ScanResult> {
   onStage?.('Ищем товар в Open Food Facts…');
@@ -257,57 +229,20 @@ async function auditBarcodeCore(barcode: string, profile: UserProfile, onStage?:
   } catch (e) {
     if (!(e instanceof ProductNotFoundError)) throw e;
   }
-  if (offRaw && offRaw.text.trim()) return auditRawIngredients(offRaw, profile, 'openfoodfacts', onStage, BARCODE_AI_TIMEOUT_MS, false);
+  if (offRaw && offRaw.text.trim()) return auditRawIngredients(offRaw, profile, 'openfoodfacts');
 
-  // Неверная контрольная цифра = код считан с ошибкой: не тратим запрос Gemini на поиск несуществующего товара
-  if (!hasValidGtinChecksum(barcode)) {
-    if (offRaw) return auditRawIngredients(offRaw, profile, 'openfoodfacts', onStage, BARCODE_AI_TIMEOUT_MS, false);
-    throw new ProductNotFoundError(barcode, 'Код, похоже, считан с ошибкой (не сходится контрольная цифра). Наведите камеру ещё раз.');
-  }
-
-  if (!isAIConfigured()) {
-    if (offRaw) return auditRawIngredients(offRaw, profile, 'openfoodfacts', onStage, BARCODE_AI_TIMEOUT_MS, false);
-    throw new ProductNotFoundError(barcode, 'Поиск в интернете недоступен: приложение не подключено к серверу SAFA.');
-  }
-
-  onStage?.('Ищем состав в интернете…');
-  let web;
-  try {
-    web = await findProductOnWeb(barcode, { brand: offRaw?.product?.brand, name: offRaw?.product?.name });
-  } catch (e) {
-    if (offRaw) return auditRawIngredients(offRaw, profile, 'openfoodfacts', onStage, BARCODE_AI_TIMEOUT_MS, false);
-    throw new ProductNotFoundError(barcode, `Поиск в интернете не удался: ${userMessage(e, 'ошибка')}`);
-  }
-  if (!web.found) {
-    if (offRaw) return auditRawIngredients(offRaw, profile, 'openfoodfacts', onStage, BARCODE_AI_TIMEOUT_MS, false);
-    throw new ProductNotFoundError(barcode, 'В интернете состав этого товара тоже не найден.');
-  }
-
-  const raw: RawIngredients = {
-    ...(offRaw ?? {}),
-    text: web.ingredientsText,
-    product: {
-      barcode,
-      name: web.name ?? offRaw?.product?.name,
-      brand: web.brand ?? offRaw?.product?.brand,
-      manufacturer: web.manufacturer,
-      imageUrl: offRaw?.product?.imageUrl,
-      sources: web.sources,
-    },
-  };
-  const fromManufacturer = web.via === 'manufacturer';
-  const result = await auditRawIngredients(raw, profile, fromManufacturer ? 'manufacturer' : 'web', onStage, BARCODE_AI_TIMEOUT_MS);
-  result.notes.unshift(
-    fromManufacturer
-      ? 'Состав взят со страницы производителя — обязательно сверьте его с упаковкой.'
-      : 'Состав найден в интернете — обязательно сверьте его с упаковкой.',
-  );
-  return result;
+  const detail = offRaw
+    ? 'Товар есть в Open Food Facts, но в его карточке нет состава.'
+    : hasValidGtinChecksum(barcode)
+      ? undefined
+      : 'Код, похоже, считан с ошибкой (не сходится контрольная цифра). Наведите камеру ещё раз.';
+  throw new ProductNotFoundError(barcode, detail);
 }
 
 /**
  * Путь А с учётом подтверждённого модератором статуса сообщества. Запрос идёт параллельно основной проверке
  * и не задерживает результат дольше COMMUNITY_GRACE_MS (при медленном ответе или сбое статус просто не применяется).
+ * Это запрос к нашему серверу за статусом, Gemini он не использует.
  */
 export async function auditBarcode(barcode: string, profile: UserProfile, onStage?: StageCallback): Promise<ScanResult> {
   const communityPromise = fetchCommunityStatus(barcode);
@@ -323,18 +258,40 @@ export async function auditBarcode(barcode: string, profile: UserProfile, onStag
   return applyCommunity(result, community, profile);
 }
 
-/** Путь Б: фото этикетки. Распознавание выполняет мультимодальная модель. */
-export async function auditPhoto(imageBase64: string, profile: UserProfile): Promise<ScanResult> {
-  if (!isAIConfigured()) {
-    throw new HttpError('Для режима «Фото состава» приложение должно быть подключено к серверу SAFA.');
-  }
-  const notes: string[] = [];
-  const ai = await tryAI(() => auditImageWithAI(imageBase64, profile), notes);
-  if (!ai) throw new HttpError(notes[0] ?? 'Не удалось распознать этикетку');
+/** Минимальная длина распознанного состава, при меньшей считаем, что текст не найден. */
+export const MIN_OCR_TEXT_LENGTH = 8;
 
-  const raw: RawIngredients = { text: ai.ingredients_text ?? '' };
-  // Распознанный текст дополнительно проходит детерминированный фильтр
+/**
+ * Путь Б: фото этикетки. Текст распознаётся на устройстве (ML Kit), очищается и сразу
+ * проверяется локальным анализатором. Фото никуда не отправляется.
+ */
+export async function auditPhoto(photoUri: string, profile: UserProfile): Promise<ScanResult> {
+  const recognized = await recognizeText(photoUri);
+  const { text, headerFound } = extractIngredientsBlock(recognized);
+  if (text.replace(/\s/g, '').length < MIN_OCR_TEXT_LENGTH) {
+    throw new HttpError('Текст на фото не распознан. Сфотографируйте блок состава ближе, при хорошем освещении, без бликов.');
+  }
+  const result = await auditRawIngredients({ text }, profile, 'photo');
+  result.notes.push(
+    headerFound
+      ? 'Блок состава выделен по заголовку (Ingrediënten / Ingrédients / Zutaten / Ingredients) — сверьте текст с упаковкой.'
+      : 'Заголовок «Ingredients» не найден — проверен весь распознанный текст. Сверьте с упаковкой.',
+  );
+  return result;
+}
+
+/**
+ * Ручная кнопка «Перепроверить через ИИ». На сервер уходит только ТЕКСТ состава (не фото).
+ * ИИ может только ужесточить вердикт. Ошибки сервера пробрасываются (HttpError с понятным текстом).
+ */
+export async function recheckWithAI(result: ScanResult, profile: UserProfile): Promise<ScanResult> {
+  if (!isAIConfigured()) throw new HttpError('Приложение не подключено к серверу SAFA.');
+  const raw: RawIngredients = result.raw ?? { text: result.ingredientsText, product: result.product };
+  if (!raw.text.trim()) throw new HttpError('Нет текста состава для проверки.');
+
   const local = analyzeLocal(raw, profile);
-  notes.push('Текст распознан ИИ по фото — сверьте его с упаковкой.');
-  return buildResult(raw, local, ai, profile, notes, 'photo');
+  const ai = await auditTextWithAI(raw.text, profile, aiContext(raw, local.aiReasons), config.aiTimeoutMs);
+  const notes = ['Состав дополнительно проверен ИИ по запросу (отправлен только текст состава).'];
+  const rebuilt = buildResult(raw, local, ai, profile, notes, result.ingredientsSource);
+  return applyCommunity(rebuilt, result.community ?? null, profile);
 }
