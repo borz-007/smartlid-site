@@ -4,7 +4,7 @@ import fs from 'fs';
 import path from 'path';
 import { config } from '../src/constants/config';
 import { getBackend, postBackend, SERVER_UNREACHABLE } from '../src/services/backend';
-import { auditTextWithAI, findProductOnWeb, resetWebSearchCooldown } from '../src/services/gemini';
+import { auditTextWithAI } from '../src/services/gemini';
 import { fetchWithTimeout, HttpError, userMessage } from '../src/services/http';
 import { createDefaultProfile } from '../src/storage/profileStorage';
 
@@ -19,7 +19,6 @@ beforeEach(() => {
   fetchMock = jest.fn();
   (global as any).fetch = fetchMock;
   config.apiBaseUrl = originalBase;
-  resetWebSearchCooldown();
 });
 
 describe('сетевой слой клиента', () => {
@@ -105,18 +104,6 @@ describe('клиент ИИ: данные уходят на сервер, про
     fetchMock.mockReturnValueOnce(respond(200, { text: 'не json' }));
     await expect(auditTextWithAI('a, b', createDefaultProfile())).rejects.toThrow(HttpError);
   });
-
-  it('после 429 поиск в интернете делает паузу и не повторяет запрос', async () => {
-    fetchMock.mockReturnValueOnce(respond(429, { error: { message: 'Лимит.', retryAfterSec: 30 } }));
-    await expect(findProductOnWeb('8718951834101')).rejects.toMatchObject({ status: 429 });
-    await expect(findProductOnWeb('8718951834101')).rejects.toMatchObject({ status: 429 });
-    expect(fetchMock).toHaveBeenCalledTimes(1);
-  });
-
-  it('источники не по https отбрасываются, состав без источников не считается найденным', async () => {
-    fetchMock.mockReturnValueOnce(respond(200, { found: true, ingredientsText: 'water, sugar, gelatin', sources: [{ title: 'x', uri: 'http://insecure.example' }] }));
-    expect((await findProductOnWeb('8718951834101')).found).toBe(false);
-  });
 });
 
 describe('изоляция ключа Gemini: в клиенте его нет', () => {
@@ -144,6 +131,16 @@ describe('изоляция ключа Gemini: в клиенте его нет', 
   it.each(FORBIDDEN)('исходники приложения и CI не содержат «%s»', (word) => {
     const hits = files.filter((f) => fs.readFileSync(f, 'utf8').includes(word)).map((f) => path.relative(root, f));
     expect(hits).toEqual([]);
+  });
+
+  it('основные сценарии не обращаются к Gemini: в клиенте нет поиска в интернете и отправки фото на проверку состава', () => {
+    const read = (rel: string) => fs.readFileSync(path.join(root, rel), 'utf8');
+    for (const rel of ['src/services/gemini.ts', 'src/engine/auditor.ts']) {
+      const code = read(rel);
+      expect(code).not.toMatch(/audit-image|find-product|findProductOnWeb|auditImageWithAI|base64/);
+    }
+    // фото на сервер отправляют только срок годности и отчёты сообщества (отдельные функции)
+    expect(read('src/services/gemini.ts')).toMatch(/action: 'audit-text'/);
   });
 
   it('в клиентском коде нет прямых обращений к Google, кроме нашего сервера и Open Food Facts', () => {

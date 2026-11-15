@@ -21,7 +21,7 @@ import { auditBarcode, withCommunity } from '../engine/auditor';
 import { useI18n } from '../i18n';
 import { getCachedResult } from '../storage/cacheStorage';
 import { userMessage } from '../services/http';
-import { isValidBarcode, searchProductsByName, type SearchResult } from '../services/openFoodFacts';
+import { isValidBarcode, ProductNotFoundError, searchProductsByName, type SearchResult } from '../services/openFoodFacts';
 import type { ScanResult } from '../types';
 
 interface Props {
@@ -72,6 +72,15 @@ export function HomeScreen({
     }
   }, []);
 
+  /** Нет в Open Food Facts / нет состава — понятное сообщение; иначе общая ошибка. */
+  const showError = (e: unknown, barcode: string) => {
+    if (e instanceof ProductNotFoundError) {
+      Alert.alert(t('product_not_found'), t('product_not_found_msg', { barcode }) + (e.detail ? `\n${e.detail}` : ''));
+    } else {
+      Alert.alert(t('error'), userMessage(e, t('error_check')));
+    }
+  };
+
   const handleManualBarcode = useCallback(async () => {
     const code = query.trim();
     if (!isValidBarcode(code)) {
@@ -91,7 +100,7 @@ export function HomeScreen({
       setResult(r);
       setResultId((n) => n + 1);
     } catch (e) {
-      Alert.alert(t('error'), userMessage(e, t('error_check')));
+      showError(e, code);
     } finally {
       setBusy(false);
     }
@@ -112,7 +121,7 @@ export function HomeScreen({
       setResult(r);
       setResultId((n) => n + 1);
     } catch (e) {
-      Alert.alert(t('error'), userMessage(e, t('error_check')));
+      showError(e, item.barcode);
     } finally {
       setBusy(false);
     }

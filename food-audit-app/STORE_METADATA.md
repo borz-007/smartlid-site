@@ -8,7 +8,7 @@ Full description — 4000 символов.
 | --- | --- | --- | --- |
 | Title | 26 | 26 | 30 |
 | Short description | 73 | 68 | 80 |
-| Full description | 2620 | 2731 | 4000 |
+| Full description | 2775 | 2934 | 4000 |
 
 Название на домашнем экране телефона — **Safa** (отдельно от Title в магазине, см. `plugins/withAndroidAppLabel.js`).
 
@@ -66,8 +66,9 @@ EXPIRY DATE SCANNER
 • See at a glance whether the product is fresh, expiring soon or expired
 
 SMART BY DESIGN
-• Products found in Open Food Facts are checked instantly by local rules. Gemini AI is used only when a product or its ingredients are missing there, and can never lift a ban
-• If a product is missing from the database, Safa can search the web for its ingredients and shows the sources
+• Products from Open Food Facts are checked instantly on your phone by local rules
+• Photos of the ingredient list are read on your device (Google ML Kit), so the photo is not uploaded
+• Optional “Recheck with AI” button for tricky ingredient lists. AI can never lift a ban
 • Reads labels in Dutch, French, German and English
 
 FOR THE WHOLE FAMILY
@@ -78,7 +79,7 @@ FOR THE WHOLE FAMILY
 GOOD TO KNOW
 • Product data comes from Open Food Facts, a community database that can be incomplete or out of date. Always compare with the package.
 • Safa is not a halal certification body and does not give medical advice. If you have a severe allergy, always read the label and follow your doctor's advice.
-• AI features send ingredient text, photos and your diet settings to the SAFA server, which forwards them to Google's Gemini API. Barcodes go to Open Food Facts. A photo you attach to a community report is sent to the SAFA server for moderation.
+• Ingredient photos are read on your device and are not uploaded. Barcodes go to Open Food Facts. If you tap “Recheck with AI”, only the ingredient text and your diet settings are sent to the SAFA server, which forwards them to Google's Gemini API. The expiry-date scanner sends the date photo to the SAFA server for AI reading. A photo you attach to a community report is sent to the SAFA server for moderation.
 ```
 
 ---
@@ -135,8 +136,9 @@ Safa — сканер халяль и состава продуктов: за с
 • Сразу видно: свежий продукт, скоро истекает или просрочен
 
 УМНАЯ ПРОВЕРКА
-• Товары из Open Food Facts проверяются мгновенно локальными правилами. Gemini AI подключается, только если товара или состава там нет, и никогда не снимает запрет
-• Если товара нет в базе, Safa может найти состав в интернете и покажет источники
+• Товары из Open Food Facts проверяются мгновенно на телефоне локальными правилами
+• Фото состава распознаётся на устройстве (Google ML Kit), поэтому снимок никуда не загружается
+• Необязательная кнопка «Перепроверить через ИИ» для сложных составов. ИИ никогда не снимает запрет
 • Читает этикетки на нидерландском, французском, немецком и английском
 
 ДЛЯ ВСЕЙ СЕМЬИ
@@ -147,14 +149,14 @@ Safa — сканер халяль и состава продуктов: за с
 ВАЖНО ЗНАТЬ
 • Данные о продуктах берутся из Open Food Facts — открытой базы, которая может быть неполной или устаревшей. Всегда сверяйте с упаковкой.
 • Safa не является сертифицирующим органом по халяль и не даёт медицинских рекомендаций. При тяжёлой аллергии всегда читайте этикетку и следуйте советам врача.
-• ИИ-функции отправляют текст состава, фото и ваши настройки питания на сервер SAFA, который передаёт их в API Google Gemini. Штрихкоды отправляются в Open Food Facts. Фото, которое вы прикладываете к отчёту сообщества, уходит на сервер SAFA для модерации.
+• Фото состава распознаётся на устройстве и никуда не загружается. Штрихкоды отправляются в Open Food Facts. Если нажать «Перепроверить через ИИ», на сервер SAFA уходит только текст состава и ваши настройки питания, а сервер передаёт их в API Google Gemini. Сканер срока годности отправляет фото даты на сервер SAFA для распознавания ИИ. Фото, которое вы прикладываете к отчёту сообщества, уходит на сервер SAFA для модерации.
 ```
 
 ---
 
 ## Заметки для публикации (не для вставки в магазин)
 
-- **Data safety (раздел «Безопасность данных»).** Приложение не требует аккаунта. При ИИ-функциях фото и текст состава уходят на сервер SAFA (Vercel), а оттуда в Google Gemini API; штрихкоды — в Open Food Facts; в отчётах сообщества на сервер SAFA попадают фото, штрихкод и случайный анонимный идентификатор установки (хранится хеш); профиль и история остаются на устройстве (AsyncStorage). Заполняйте анкету по фактической сборке.
+- **Data safety (раздел «Безопасность данных»).** Приложение не требует аккаунта. Фото состава обрабатывается на устройстве (Google ML Kit, офлайн). Текст состава уходит на сервер SAFA (Vercel) и оттуда в Google Gemini API только по нажатию «Перепроверить через ИИ»; фото срока годности — на сервер SAFA для распознавания ИИ; штрихкоды — в Open Food Facts; в отчётах сообщества на сервер SAFA попадают фото, штрихкод и случайный анонимный идентификатор установки (хранится хеш); профиль и история остаются на устройстве (AsyncStorage). Заполняйте анкету по фактической сборке.
 - **Политика Google Play.** В Title и описаниях не должно быть эмодзи, цен, слов вроде «№1/лучший» и повторяющегося перечисления ключевых слов; в текстах выше этого нет.
 - **Ограничения утверждений.** Не пишите в магазине про «халяль-сертификацию» и медицинские эффекты: приложение не сертифицирует и не лечит. Список E-добавок во встроенном справочнике неполный (около 55 записей), поэтому в тексте сказано «распространённых добавок».
 - **Категория (предложение, не проверено).** Food & Drink; вариант — Health & Fitness.
